@@ -3,9 +3,9 @@ import { analyzeFixture } from './analyzer';
 import { baselineFromRun, buildOptimizationPlan, defaultOptimizationPolicy, defaultScenario, evaluateCase, fingerprintRequest, instrumentInvocation, projectSavings, redactSecrets, safeMetadata } from './v2';
 
 describe('V2 safety and evidence primitives', () => {
-  it('redacts common provider secrets and fingerprints requests without storing raw prompts', () => {
+  it('redacts common provider secrets and fingerprints requests without storing raw prompts', async () => {
     expect(redactSecrets('Authorization: Bearer sk-test_123456789012')).toContain('[REDACTED]');
-    expect(fingerprintRequest('OpenAI', 'gpt-4.1', 'src/a.ts:4', 'private prompt')).toMatch(/^[0-9a-f]+$/);
+    await expect(fingerprintRequest('OpenAI', 'gpt-4.1', 'src/a.ts:4', 'private prompt')).resolves.toMatch(/^fp:v2:[0-9a-f]{64}$/);
     expect(safeMetadata({ response: { prompt: 'private prompt', contentType: 'text/plain', inputTokens: 12, apiKey: 'sk-test_123456789012' } }, 'redacted')).toEqual({ response: { prompt: '[REDACTED]', contentType: 'text/plain', inputTokens: 12, apiKey: '[REDACTED]' } });
   });
 
@@ -58,6 +58,26 @@ describe('V2 safety and evidence primitives', () => {
     expect(plan.steps.find(step => step.candidateId === 'c2')?.dependsOn).toEqual(['step-c1']);
     const projection = projectSavings(result.before, { ...result.before, cost: result.before.cost / 2 }, 100);
     expect(projection.monthlySavings).toBeGreaterThan(projection.dailySavings);
+  });
+
+  it('rejects plans with filtered, missing, or circular dependencies', () => {
+    const result = analyzeFixture();
+    const filteredPrerequisite = { ...result.candidates[0], risk: 'HIGH' as const };
+    const dependent = { ...result.candidates[1], dependsOn: [filteredPrerequisite.id] };
+    const filteredPlan = buildOptimizationPlan('run-filtered-dependency', [filteredPrerequisite, dependent]);
+    expect(filteredPlan.valid).toBe(false);
+    expect(filteredPlan.validationErrors.join(' ')).toContain('filtered');
+
+    const missingPlan = buildOptimizationPlan('run-missing-dependency', [{ ...result.candidates[1], dependsOn: ['missing'] }]);
+    expect(missingPlan.valid).toBe(false);
+    expect(missingPlan.validationErrors.join(' ')).toContain('missing');
+
+    const circularPlan = buildOptimizationPlan('run-circular-dependency', [
+      { ...result.candidates[0], dependsOn: [result.candidates[1].id] },
+      { ...result.candidates[1], dependsOn: [result.candidates[0].id] },
+    ]);
+    expect(circularPlan.valid).toBe(false);
+    expect(circularPlan.validationErrors.join(' ')).toContain('cycle');
   });
 
   it('excludes cheaper-model candidates when model changes are forbidden', () => {

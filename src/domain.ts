@@ -16,7 +16,7 @@ export interface BaselineProfile { id:string; runId:string; commitSha:string; ca
 export interface EvaluationCase { id:string; name:string; input:unknown; expected:unknown; evaluator:EvaluatorType; tolerance?:number; source:'existing_test'|'fixture'|'generated'; }
 export interface EvaluationResult { caseId:string; baseline:unknown; candidate:unknown; passed:boolean; confidence:'HIGH'|'MEDIUM'|'LOW'; reason:string; }
 export interface OptimizationPlanStep { id:string; candidateId:string; title:string; dependsOn:string[]; score:number; status:'queued'|'running'|'passed'|'reverted'|'skipped'; }
-export interface OptimizationPlan { id:string; runId:string; createdAt:string; steps:OptimizationPlanStep[]; expectedSavingsPercent:number; risk:'LOW'|'MEDIUM'|'HIGH'; }
+export interface OptimizationPlan { id:string; runId:string; createdAt:string; steps:OptimizationPlanStep[]; expectedSavingsPercent:number; risk:'LOW'|'MEDIUM'|'HIGH'; valid:boolean; validationErrors:string[]; }
 export interface OptimizationPolicy { maxBehavioralRisk:'low'|'medium'|'high'; minimumExpectedSavingsPercent:number; allowModelChanges:boolean; allowPromptChanges:boolean; allowAiRemoval:boolean; maxFilesPerPatch:number; requireAllTests:boolean; requireReviewAgent:boolean; }
 export interface CostProjection { measuredPerRun:number; requestsPerDay:number; dailySavings:number; monthlySavings:number; annualSavings:number; quality:'MEASURED'|'ESTIMATED'|'NOT_VERIFIED'; }
 export interface GitBranchRecord { baseBranch:string; baseCommitSha:string; optimizationBranch:string; resultingCommitSha?:string; }

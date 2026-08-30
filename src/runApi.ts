@@ -7,6 +7,7 @@ export function createPersistedRun(input:Pick<Run,'repositoryUrl'|'candidates'|'
 export function listPersistedRuns():Promise<PersistedRun[]>{return request<PersistedRun[]>('/api/runs');}
 export function getPersistedRun(id:string):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}`);}
 export function submitPersistedPlan(id:string,plan:Run['plan']):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/plan`,{method:'POST',body:JSON.stringify(plan)});}
+export function submitPersistedResults(id:string,results:{after:Run['after'];projection?:Run['projection']}):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/results`,{method:'POST',body:JSON.stringify(results)});}
 export function createPersistedBranch(id:string,input:{repositoryUrl:string;baseBranch:string;branchName:string}):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/github-branch`,{method:'POST',body:JSON.stringify(input)});}
 export function createPersistedPullRequest(id:string,input:{repositoryUrl:string;head:string;base:string;title:string;body:string;approved:true}):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/github-pr`,{method:'POST',body:JSON.stringify(input)});}
 export function transitionPersistedRun(id:string,transition:'start'|'cancel'):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/${transition}`,{method:'POST'});}

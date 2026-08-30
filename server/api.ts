@@ -34,6 +34,8 @@ function openDatabase() {
       pull_request_json TEXT
       ,baseline_json TEXT
       ,evaluations_json TEXT
+      ,after_json TEXT
+      ,projection_json TEXT
     );
     CREATE TABLE IF NOT EXISTS agent_events (
       id TEXT PRIMARY KEY,
@@ -53,6 +55,8 @@ function openDatabase() {
   try { database.exec('ALTER TABLE optimization_runs ADD COLUMN pull_request_json TEXT'); } catch { /* already migrated */ }
   try { database.exec('ALTER TABLE optimization_runs ADD COLUMN baseline_json TEXT'); } catch { /* already migrated */ }
   try { database.exec('ALTER TABLE optimization_runs ADD COLUMN evaluations_json TEXT'); } catch { /* already migrated */ }
+  try { database.exec('ALTER TABLE optimization_runs ADD COLUMN after_json TEXT'); } catch { /* already migrated */ }
+  try { database.exec('ALTER TABLE optimization_runs ADD COLUMN projection_json TEXT'); } catch { /* already migrated */ }
   return database;
 }
 
@@ -76,7 +80,7 @@ function runRecord(database, id) {
   const run = database.prepare('SELECT * FROM optimization_runs WHERE id = ?').get(id);
   if (!run) return null;
   const events = database.prepare('SELECT id, label, status, detail, created_at AS createdAt FROM agent_events WHERE run_id = ? ORDER BY created_at').all(id);
-  return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), plan: run.plan_json ? JSON.parse(run.plan_json) : undefined, branch: run.branch_json ? JSON.parse(run.branch_json) : undefined, pullRequest: run.pull_request_json ? JSON.parse(run.pull_request_json) : undefined, baseline: run.baseline_json ? JSON.parse(run.baseline_json) : undefined, evaluations: run.evaluations_json ? JSON.parse(run.evaluations_json) : undefined, candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
+  return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), plan: run.plan_json ? JSON.parse(run.plan_json) : undefined, branch: run.branch_json ? JSON.parse(run.branch_json) : undefined, pullRequest: run.pull_request_json ? JSON.parse(run.pull_request_json) : undefined, baseline: run.baseline_json ? JSON.parse(run.baseline_json) : undefined, evaluations: run.evaluations_json ? JSON.parse(run.evaluations_json) : undefined, after: run.after_json ? JSON.parse(run.after_json) : undefined, projection: run.projection_json ? JSON.parse(run.projection_json) : undefined, candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
 }
 
 function runRecords(database) {
@@ -141,6 +145,7 @@ async function handleRequest(request, response, next, database) {
     if (request.method === 'GET' && segments.length === 3) { const run = runRecord(database, id); return run ? json(response, 200, run) : json(response, 404, { error: 'Run not found' }); }
     if (request.method === 'GET' && segments[3] === 'candidates') { const run = runRecord(database, id); return run ? json(response, 200, { candidates: run.candidates }) : json(response, 404, { error: 'Run not found' }); }
     if (request.method === 'GET' && segments[3] === 'results') { const run = runRecord(database, id); return run ? json(response, 200, { status: run.status, mode: run.mode, candidates: run.candidates, events: run.events }) : json(response, 404, { error: 'Run not found' }); }
+    if (request.method === 'POST' && segments[3] === 'results') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const body = await readBody(request); if (!body.after) return json(response, 400, { error: 'After metrics are required' }); database.prepare('UPDATE optimization_runs SET after_json = ?, projection_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(body.after), body.projection ? JSON.stringify(body.projection) : null, new Date().toISOString(), id); return json(response, 200, runRecord(database, id)); }
     if (request.method === 'GET' && segments[3] === 'events') {
       const run = runRecord(database, id);
       if (!run) return json(response, 404, { error: 'Run not found' });

@@ -12,6 +12,9 @@ describe('V2 safety and evidence primitives', () => {
   it('evaluates deterministic behavior and preserves baseline commit identity', () => {
     const evaluation = evaluateCase({ id: 'e1', name: 'same JSON', input: {}, expected: { ok: true }, evaluator: 'json', source: 'existing_test' }, '{"ok":true}', '{"ok":true}');
     expect(evaluation.passed).toBe(true);
+    const baselineMismatch = evaluateCase({ id: 'e2', name: 'baseline mismatch', input: {}, expected: { ok: true }, evaluator: 'json', source: 'generated' }, '{"ok":false}', '{"ok":true}');
+    expect(baselineMismatch.passed).toBe(false);
+    expect(baselineMismatch.reason).toContain('baseline');
     const baseline = baselineFromRun('run-1', 'abc1234', defaultScenario, { calls: 1, tokens: 20, cost: 0.01, latencyMs: 50, quality: 'MEASURED' });
     expect(baseline.commitSha).toBe('abc1234');
   });

@@ -6,17 +6,50 @@ export const defaultScenario:OptimizationScenario={id:'scenario-fixture-test',na
 
 const secretPatterns=[/sk-[A-Za-z0-9_-]{12,}/gi,/gh[pousr]_[A-Za-z0-9_]{20,}/gi,/Bearer\s+[A-Za-z0-9._-]+/gi,/AIza[A-Za-z0-9_-]{20,}/gi];
 export function redactSecrets(value:string):string{return secretPatterns.reduce((result,pattern)=>result.replace(pattern,'[REDACTED]'),value);}
-function cloneMetadata(value:unknown,seen=new WeakSet<object>()):unknown{if(Array.isArray(value)){if(seen.has(value))return'[Circular]';seen.add(value);return value.map(item=>cloneMetadata(item,seen));}if(value&&typeof value==='object'){if(seen.has(value))return'[Circular]';seen.add(value);return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,cloneMetadata(item,seen)]));}return value;}
-function sanitize(value:unknown,seen=new WeakSet<object>()):unknown{if(typeof value==='string')return redactSecrets(value);if(Array.isArray(value)){if(seen.has(value))return'[Circular]';seen.add(value);return value.map(item=>sanitize(item,seen));}if(value&&typeof value==='object'){if(seen.has(value))return'[Circular]';seen.add(value);return Object.fromEntries(Object.entries(value).map(([key,item])=>[key,/prompt|content|authorization|token|secret|key/i.test(key)?'[REDACTED]':sanitize(item,seen)]));}return value;}
+const MAX_METADATA_DEPTH=8;
+const MAX_METADATA_NODES=500;
+const MAX_METADATA_STRING_LENGTH=4000;
+const secretField=/^(authorization|proxy[-_]?authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|credential|prompt|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt)$/i;
+const metadataFields=/^(status|finish[-_]?reason|usage|provider|model|request|response|latency(?:ms)?|error|cache[-_]?hit|input[-_]?tokens|output[-_]?tokens|content[-_]?type)$/i;
+type MetadataWalk={ancestors:WeakSet<object>;nodes:number};
+function metadataKey(key:string):string{return key.replace(/([a-z])([A-Z])/g,'$1-$2');}
+function cloneMetadata(value:unknown,walk:MetadataWalk={ancestors:new WeakSet(),nodes:0},depth=0,memo=new WeakMap<object,unknown>()):unknown{
+ if(++walk.nodes>MAX_METADATA_NODES||depth>MAX_METADATA_DEPTH)return'[TRUNCATED]';
+ if(value===null||typeof value!=='object')return typeof value==='string'?value.slice(0,MAX_METADATA_STRING_LENGTH):value;
+ const object=value as object;
+ if(memo.has(object))return memo.get(object);
+ if(value instanceof Date)return new Date(value.getTime());
+ if(value instanceof Map){const result=new Map<unknown,unknown>();memo.set(object,result);value.forEach((item,key)=>result.set(cloneMetadata(key,walk,depth+1,memo),cloneMetadata(item,walk,depth+1,memo)));return result;}
+ if(value instanceof Set){const result=new Set<unknown>();memo.set(object,result);value.forEach(item=>result.add(cloneMetadata(item,walk,depth+1,memo)));return result;}
+ if(value instanceof Error){const result=new Error(value.message);result.name=value.name;result.stack=value.stack;memo.set(object,result);Object.entries(value).forEach(([key,item])=>Object.assign(result,{[key]:cloneMetadata(item,walk,depth+1,memo)}));return result;}
+ if(Array.isArray(value)){const result:unknown[]=[];memo.set(object,result);value.forEach(item=>result.push(cloneMetadata(item,walk,depth+1,memo)));return result;}
+ const result=Object.create(Object.getPrototypeOf(value)) as Record<string,unknown>;memo.set(object,result);Object.entries(value).forEach(([key,item])=>{result[key]=cloneMetadata(item,walk,depth+1,memo);});return result;
+}
+function sanitize(value:unknown,walk:MetadataWalk={ancestors:new WeakSet(),nodes:0},depth=0):unknown{
+ if(++walk.nodes>MAX_METADATA_NODES||depth>MAX_METADATA_DEPTH)return'[TRUNCATED]';
+ if(typeof value==='string')return redactSecrets(value).slice(0,MAX_METADATA_STRING_LENGTH);
+ if(value===null||typeof value!=='object')return value;
+ const object=value as object;
+ if(walk.ancestors.has(object))return'[Circular]';
+ walk.ancestors.add(object);
+ let result:unknown;
+ if(value instanceof Date)result=new Date(value.getTime());
+ else if(value instanceof Map)result=new Map(Array.from(value.entries(),([key,item])=>[sanitize(key,walk,depth+1),sanitize(item,walk,depth+1)]));
+ else if(value instanceof Set)result=new Set(Array.from(value, item=>sanitize(item,walk,depth+1)));
+ else if(value instanceof Error){const error=new Error(value.message);error.name=value.name;error.stack=value.stack;Object.entries(value).forEach(([key,item])=>Object.assign(error,{[key]:secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)}));result=error;}
+ else if(Array.isArray(value))result=value.map(item=>sanitize(item,walk,depth+1));
+ else result=Object.fromEntries(Object.entries(value).map(([key,item])=>[key,secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)]));
+ walk.ancestors.delete(object);return result;
+}
 export function safeMetadata(value:Record<string,unknown>,captureLevel:CaptureLevel):Record<string,unknown>{
  if(captureLevel==='full_local_only')return cloneMetadata(value) as Record<string,unknown>;
  const sanitized=sanitize(value) as Record<string,unknown>;
- if(captureLevel==='metadata_only')return Object.fromEntries(Object.entries(sanitized).filter(([key])=>/^(status|finish|usage|provider|model|request|response|latency|error|cache)/i.test(key)));
+ if(captureLevel==='metadata_only')return Object.fromEntries(Object.entries(sanitized).filter(([key])=>metadataFields.test(metadataKey(key))));
  return sanitized;
 }
 export function fingerprintRequest(provider:string,model:string|undefined,callSite:string,input:string):string{let hash=2166136261;for(const char of `${provider}:${model??''}:${callSite}:${redactSecrets(input)}`)hash=Math.imul(hash^char.charCodeAt(0),16777619);return `${(hash>>>0).toString(16)}`;}
 export function createInvocation(input:Omit<AIInvocation,'id'|'timestamp'>):AIInvocation{return{...input,id:crypto.randomUUID(),timestamp:new Date().toISOString()};}
-export async function instrumentInvocation<T>(meta:Omit<AIInvocation,'id'|'timestamp'|'latencyMs'|'error'>,operation:()=>Promise<T>):Promise<{value:T;invocation:AIInvocation}>{const started=performance.now();const invocationMeta={...meta,metadata:safeMetadata(meta.metadata,meta.captureLevel)};try{const value=await operation();return{value,invocation:createInvocation({...invocationMeta,latencyMs:Math.round(performance.now()-started),error:false})};}catch(error){throw Object.assign(error instanceof Error?error:new Error('Invocation failed'),{invocation:createInvocation({...invocationMeta,latencyMs:Math.round(performance.now()-started),error:true})});}}
+export async function instrumentInvocation<T>(meta:Omit<AIInvocation,'id'|'timestamp'|'latencyMs'|'error'>,operation:()=>Promise<T>):Promise<{value:T;invocation:AIInvocation}>{const started=performance.now();let invocationMeta={...meta};try{invocationMeta={...meta,metadata:safeMetadata(meta.metadata,meta.captureLevel)};}catch{invocationMeta={...meta,metadata:{sanitizationError:'Metadata sanitization failed'}};}try{const value=await operation();return{value,invocation:createInvocation({...invocationMeta,latencyMs:Math.round(performance.now()-started),error:false})};}catch(error){throw Object.assign(error instanceof Error?error:new Error('Invocation failed'),{invocation:createInvocation({...invocationMeta,latencyMs:Math.round(performance.now()-started),error:true})});}}
 
 function jsonEqual(left:unknown,right:unknown):boolean{if(Object.is(left,right))return true;if(Array.isArray(left)&&Array.isArray(right))return left.length===right.length&&left.every((item,index)=>jsonEqual(item,right[index]));if(left&&right&&typeof left==='object'&&typeof right==='object'){const a=left as Record<string,unknown>;const b=right as Record<string,unknown>;const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(key=>key in b&&jsonEqual(a[key],b[key]));}return false;}
 function subset(expected:unknown,actual:unknown):boolean{if(expected&&typeof expected==='object'&&actual&&typeof actual==='object'&&!Array.isArray(expected)&&!Array.isArray(actual))return Object.entries(expected as Record<string,unknown>).every(([key,value])=>key in (actual as Record<string,unknown>)&&subset(value,(actual as Record<string,unknown>)[key]));return jsonEqual(expected,actual);}

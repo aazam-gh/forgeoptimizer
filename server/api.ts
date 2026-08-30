@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
+import { canTransition } from '../src/runState.ts';
 
 const databasePath = join(process.cwd(), '.data', 'forgeoptimizer.sqlite');
 
@@ -65,7 +66,7 @@ function runRecord(database, id) {
   const run = database.prepare('SELECT * FROM optimization_runs WHERE id = ?').get(id);
   if (!run) return null;
   const events = database.prepare('SELECT id, label, status, detail, created_at AS createdAt FROM agent_events WHERE run_id = ? ORDER BY created_at').all(id);
-  return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
+  return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), plan: run.plan_json ? JSON.parse(run.plan_json) : undefined, candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
 }
 
 function createRun(database, input) {
@@ -75,11 +76,17 @@ function createRun(database, input) {
   return runRecord(database, id);
 }
 
+function appendEvent(database, runId, event) {
+  database.prepare('INSERT OR REPLACE INTO agent_events (id, run_id, label, status, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(event.id ?? randomUUID(), runId, event.label, event.status, event.detail, new Date().toISOString());
+}
+
 function updateRun(database, id, patch) {
   const current = database.prepare('SELECT * FROM optimization_runs WHERE id = ?').get(id);
   if (!current) return null;
+  if (patch.status && !canTransition(current.status, patch.status)) throw new Error(`Invalid run transition: ${current.status} -> ${patch.status}`);
   const next = { status: patch.status ?? current.status, mode: patch.mode ?? current.mode, failureReason: patch.failureReason ?? current.failure_reason, fallbackReason: patch.fallbackReason ?? current.fallback_reason, trueForgeSessionId: patch.trueForgeSessionId ?? current.trueforge_session_id, trueForgeTurnId: patch.trueForgeTurnId ?? current.trueforge_turn_id };
-  database.prepare('UPDATE optimization_runs SET status = ?, mode = ?, updated_at = ?, failure_reason = ?, fallback_reason = ?, trueforge_session_id = ?, trueforge_turn_id = ? WHERE id = ?').run(next.status, next.mode, new Date().toISOString(), next.failureReason ?? null, next.fallbackReason ?? null, next.trueForgeSessionId ?? null, next.trueForgeTurnId ?? null, id);
+  database.prepare('UPDATE optimization_runs SET status = ?, mode = ?, approval_status = ?, updated_at = ?, failure_reason = ?, fallback_reason = ?, trueforge_session_id = ?, trueforge_turn_id = ? WHERE id = ?').run(next.status, next.mode, patch.approvalStatus ?? current.approval_status, new Date().toISOString(), next.failureReason ?? null, next.fallbackReason ?? null, next.trueForgeSessionId ?? null, next.trueForgeTurnId ?? null, id);
+  if (patch.status && patch.status !== current.status) appendEvent(database, id, { id: `run-${id}-${patch.status}`, label: 'Run lifecycle', status: patch.status === 'failed' || patch.status === 'cancelled' ? 'blocked' : 'complete', detail: `Run transitioned to ${patch.status}` });
   return runRecord(database, id);
 }
 
@@ -122,10 +129,12 @@ async function handleRequest(request, response, next, database) {
       response.statusCode = 200; response.setHeader('Content-Type', 'text/event-stream'); response.setHeader('Cache-Control', 'no-cache'); response.end(run.events.map(event => `event: agent\ndata: ${JSON.stringify(event)}\n\n`).join(''));
       return;
     }
+    if (request.method === 'POST' && segments[3] === 'events') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const event = await readBody(request); if (!event.id || !event.label || !event.status || !event.detail) return json(response, 400, { error: 'Event id, label, status, and detail are required' }); appendEvent(database, id, event); return json(response, 201, runRecord(database, id)); }
     if (request.method === 'POST' && segments[3] === 'start') return json(response, 200, updateRun(database, id, { status: 'preparing' }));
     if (request.method === 'POST' && segments[3] === 'cancel') return json(response, 200, updateRun(database, id, { status: 'cancelled' }));
+    if (request.method === 'POST' && segments[3] === 'approve') return json(response, 200, updateRun(database, id, { approvalStatus: 'approved' }));
     if (request.method === 'POST' && segments[3] === 'plan') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const body = await readBody(request); database.prepare('UPDATE optimization_runs SET plan_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(body), new Date().toISOString(), id); return json(response, 200, { ...run, plan: body }); }
-    if (request.method === 'POST' && segments[3] === 'publish') return json(response, 200, updateRun(database, id, { status: 'publishing' }));
+    if (request.method === 'POST' && segments[3] === 'publish') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); if (run.approvalStatus !== 'approved') return json(response, 409, { error: 'Explicit approval is required before publishing' }); return json(response, 200, updateRun(database, id, { status: 'publishing' })); }
     if (request.method === 'POST' && segments[1] === 'candidates' && segments[3] && ['approve', 'reject'].includes(segments[3])) { const run = updateCandidates(database, segments[2], segments[3] === 'approve'); return run ? json(response, 200, run) : json(response, 404, { error: 'Candidate not found' }); }
     return json(response, 404, { error: 'Unsupported run endpoint' });
   } catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : 'Invalid request' }); }

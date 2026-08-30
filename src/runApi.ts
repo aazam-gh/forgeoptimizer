@@ -6,5 +6,7 @@ async function request<T>(path:string,init?:RequestInit):Promise<T>{const respon
 export function createPersistedRun(input:Pick<Run,'repositoryUrl'|'candidates'|'usages'|'before'|'approvalStatus'> & {policy?:unknown}):Promise<PersistedRun>{return request<PersistedRun>('/api/runs',{method:'POST',body:JSON.stringify(input)});}
 export function getPersistedRun(id:string):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}`);}
 export function transitionPersistedRun(id:string,transition:'start'|'cancel'):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/${transition}`,{method:'POST'});}
+export function approvePersistedRun(id:string):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/approve`,{method:'POST'});}
+export function appendPersistedEvent(id:string,event:Run['events'][number]):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/events`,{method:'POST',body:JSON.stringify(event)});}
 export function subscribeToRunEvents(id:string,onEvent:(event:Run['events'][number])=>void):()=>void{const source=new EventSource(`/api/runs/${encodeURIComponent(id)}/events`);source.addEventListener('agent',event=>{try{onEvent(JSON.parse((event as MessageEvent).data));}catch{onEvent({id:'api-error',label:'Run API',status:'blocked',detail:'Malformed persisted event ignored'});}});source.onerror=()=>source.close();return()=>source.close();}
 export type { PersistedRun, RunStatus };

@@ -1,9 +1,9 @@
 import type { Run, RunStatus } from './domain';
 
-type PersistedRun=Pick<Run,'id'|'repositoryUrl'|'sourceBranch'|'sourceCommitSha'|'status'|'mode'|'approvalStatus'|'createdAt'|'updatedAt'|'failureReason'|'fallbackReason'|'trueForgeSessionId'|'trueForgeTurnId'|'events'|'candidates'|'usages'|'before'|'baseline'|'evaluations'|'plan'|'branch'|'pullRequest'> & {policy?:unknown};
+type PersistedRun=Pick<Run,'id'|'repositoryUrl'|'sourceBranch'|'sourceCommitSha'|'scenarios'|'status'|'mode'|'approvalStatus'|'createdAt'|'updatedAt'|'failureReason'|'fallbackReason'|'trueForgeSessionId'|'trueForgeTurnId'|'events'|'candidates'|'usages'|'before'|'baseline'|'evaluations'|'plan'|'branch'|'pullRequest'> & {policy?:unknown};
 
 async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(path,{...init,headers:{'Content-Type':'application/json',...init?.headers}});if(!response.ok)throw new Error(`Run API ${response.status}: ${await response.text()}`);return response.json() as Promise<T>;}
-export function createPersistedRun(input:Pick<Run,'repositoryUrl'|'sourceBranch'|'sourceCommitSha'|'candidates'|'usages'|'before'|'approvalStatus'> & {policy?:unknown}):Promise<PersistedRun>{return request<PersistedRun>('/api/runs',{method:'POST',body:JSON.stringify(input)});}
+export function createPersistedRun(input:Pick<Run,'repositoryUrl'|'sourceBranch'|'sourceCommitSha'|'scenarios'|'candidates'|'usages'|'before'|'approvalStatus'> & {policy?:unknown}):Promise<PersistedRun>{return request<PersistedRun>('/api/runs',{method:'POST',body:JSON.stringify(input)});}
 export type RepositoryInspection={owner:string;name:string;defaultBranch:string;private:boolean;baseCommitSha:string};
 export function inspectPersistedRepository(repositoryUrl:string,branch?:string):Promise<RepositoryInspection>{return request<RepositoryInspection>('/api/github/repository',{method:'POST',body:JSON.stringify({repositoryUrl,branch})});}
 export function listPersistedRuns():Promise<PersistedRun[]>{return request<PersistedRun[]>('/api/runs');}

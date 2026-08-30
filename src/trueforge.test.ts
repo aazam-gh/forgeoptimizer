@@ -12,17 +12,25 @@ describe('TrueForge session and turn integration',()=>{
       {type:'turn.created',id:'turn-1'},
       {type:'thread.created',thread_id:'sub-agent-1'},
       {type:'model.message.delta',content:'working'},
-      {type:'model.message',content:'{"candidates":[]}'},
+      {type:'model.message',content:'{"candidates":[],"files":[{"path":"src/app.ts","content":"export const ok=true;"}]}'},
       {type:'turn.done'},
     ]));
     vi.stubGlobal('fetch',fetchMock);
     const events=[] as {label:string;status:string;detail:string}[];
     const result=await runTrueForgeOrchestrator('fixture://app',event=>events.push(event));
-    expect(result).toMatchObject({mode:'trueforge',sessionId:'session-1',turnId:'turn-1',finalResult:{candidates:[]}});
+    expect(result).toMatchObject({mode:'trueforge',sessionId:'session-1',turnId:'turn-1',finalResult:{candidates:[]},patchFiles:[{path:'src/app.ts',content:'export const ok=true;'}]});
     expect(fetchMock).toHaveBeenCalledTimes(2);
     expect(fetchMock.mock.calls[1][0]).toBe('/api/trueforge/sessions/session-1/turns');
     expect(events.some(event=>event.label==='TrueForge sub-agent')).toBe(true);
     expect(events.some(event=>event.status==='complete')).toBe(true);
+  });
+
+  it('ignores unsafe structured patch files while retaining the final result',async()=>{
+    trueForgeConfig.enabled=true;
+    vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(Response.json({id:'session-2'})).mockResolvedValueOnce(streamResponse([{type:'model.message',content:'{"files":[{"path":"../secrets.env","content":"no"}]}'},{type:'turn.done'}])));
+    const result=await runTrueForgeOrchestrator('fixture://app',()=>undefined,{maxRetries:0});
+    expect(result.finalResult).toMatchObject({files:[{path:'../secrets.env'}]});
+    expect(result.patchFiles).toEqual([]);
   });
 
   it('returns an explicit deterministic fallback when TrueForge fails',async()=>{

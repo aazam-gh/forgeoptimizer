@@ -1,4 +1,4 @@
-import type { EvaluationResult, ScenarioExecutionResult } from './domain';
+import type { EvaluationResult, ScenarioExecutionResult } from './domain.ts';
 
 export type ValidationState='PASS'|'FAIL'|'NOT_VERIFIED';
 export type ValidationGateInput={baseline:{testsPassed:number;testsFailed:number};candidate:{testsPassed:number;testsFailed:number};scenario?:ScenarioExecutionResult;evaluations?:EvaluationResult[];typecheck?:boolean;build?:boolean;reviewApproved?:boolean};

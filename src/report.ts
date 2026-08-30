@@ -1,5 +1,5 @@
-import type { Candidate, GitBranchRecord, RunMetrics } from './domain';
-import type { ValidationGateResult } from './validation';
+import type { Candidate, GitBranchRecord, RunMetrics } from './domain.ts';
+import type { ValidationGateResult } from './validation.ts';
 
 export type OptimizationReportInput={before:RunMetrics;after?:RunMetrics;candidates:Candidate[];branch:GitBranchRecord;validation:ValidationGateResult;changedFiles:string[];optimizerCost?:number;monthlySavings?:number};
 

@@ -28,8 +28,9 @@ fixture values from estimates.
 ## 3. Show the guarded optimization flow
 
 Select the high-confidence opportunities, open the diff, and advance through
-the optimization pipeline. The results screen requires an explicit approval
-before the proposed patch is considered accepted.
+the optimization pipeline. The results screen shows the patch as **PROPOSED**
+until the presenter clicks **Approve patch**. Only then does the decision log
+mark the selected candidates **ACCEPTED**; approval still does not merge code.
 
 ## 4. Evidence to mention
 

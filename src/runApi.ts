@@ -1,0 +1,10 @@
+import type { Run, RunStatus } from './domain';
+
+type PersistedRun=Pick<Run,'id'|'repositoryUrl'|'status'|'mode'|'createdAt'|'updatedAt'|'failureReason'|'fallbackReason'|'trueForgeSessionId'|'trueForgeTurnId'|'events'|'candidates'> & {policy?:unknown};
+
+async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(path,{...init,headers:{'Content-Type':'application/json',...init?.headers}});if(!response.ok)throw new Error(`Run API ${response.status}: ${await response.text()}`);return response.json() as Promise<T>;}
+export function createPersistedRun(input:Pick<Run,'repositoryUrl'|'candidates'> & {policy?:unknown}):Promise<PersistedRun>{return request<PersistedRun>('/api/runs',{method:'POST',body:JSON.stringify(input)});}
+export function getPersistedRun(id:string):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}`);}
+export function transitionPersistedRun(id:string,transition:'start'|'cancel'):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/${transition}`,{method:'POST'});}
+export function subscribeToRunEvents(id:string,onEvent:(event:Run['events'][number])=>void):()=>void{const source=new EventSource(`/api/runs/${encodeURIComponent(id)}/events`);source.addEventListener('agent',event=>{try{onEvent(JSON.parse((event as MessageEvent).data));}catch{onEvent({id:'api-error',label:'Run API',status:'blocked',detail:'Malformed persisted event ignored'});}});source.onerror=()=>source.close();return()=>source.close();}
+export type { PersistedRun, RunStatus };

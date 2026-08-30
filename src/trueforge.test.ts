@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runTrueForgeOrchestrator, trueForgeConfig } from './trueforge';
+import { extractTrueForgeAnalysis, runTrueForgeOrchestrator, trueForgeConfig } from './trueforge';
 
 const streamResponse=(events:unknown[])=>new Response(new ReadableStream({start(controller){const encoder=new TextEncoder();for(const event of events)controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));controller.close();}}),{headers:{'Content-Type':'text/event-stream'}});
 
 describe('TrueForge session and turn integration',()=>{
   afterEach(()=>{vi.unstubAllGlobals();trueForgeConfig.enabled=false;});
+
+  it('accepts only schema-checked structured optimization evidence',()=>{const result=extractTrueForgeAnalysis({analysis:{usages:[{id:'u',file:'src/a.ts',line:1,functionName:'a',provider:'OpenAI',purpose:'test',inputTokens:10,outputTokens:2,quality:'MEASURED'}],candidates:[{id:'c',usageId:'u',file:'src/a.ts',line:1,category:'Context reduction',title:'candidate',finding:'finding',recommendation:'recommendation',savingsPercent:10,confidence:'HIGH',risk:'LOW',removesAi:false,diff:'diff'}],before:{calls:1,tokens:12,cost:.01,latencyMs:20,quality:'MEASURED'}}});expect(result?.candidates).toHaveLength(1);expect(extractTrueForgeAnalysis({analysis:{before:{calls:1}}})).toBeUndefined();});
 
   it('creates a session, executes a turn, maps events, and captures the result',async()=>{
     trueForgeConfig.enabled=true;

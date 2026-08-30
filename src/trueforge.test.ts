@@ -8,6 +8,8 @@ describe('TrueForge session and turn integration',()=>{
 
   it('accepts only schema-checked structured optimization evidence',()=>{const result=extractTrueForgeAnalysis({analysis:{usages:[{id:'u',file:'src/a.ts',line:1,functionName:'a',provider:'OpenAI',purpose:'test',inputTokens:10,outputTokens:2,quality:'MEASURED'}],candidates:[{id:'c',usageId:'u',file:'src/a.ts',line:1,category:'Context reduction',title:'candidate',finding:'finding',recommendation:'recommendation',savingsPercent:10,confidence:'HIGH',risk:'LOW',removesAi:false,diff:'diff'}],before:{calls:1,tokens:12,cost:.01,latencyMs:20,quality:'MEASURED'}}});expect(result?.candidates).toHaveLength(1);expect(extractTrueForgeAnalysis({analysis:{before:{calls:1}}})).toBeUndefined();});
 
+  it('carries bounded optimizer iteration and concurrency budgets into the session',async()=>{trueForgeConfig.enabled=true;const fetchMock=vi.fn().mockResolvedValueOnce(Response.json({id:'session-budget'})).mockResolvedValueOnce(streamResponse([{type:'turn.done'}]));vi.stubGlobal('fetch',fetchMock);await runTrueForgeOrchestrator('fixture://app',()=>undefined,{budget:{maxTrueForgeIterations:7,maxParallelSubAgents:2}});expect(JSON.parse(fetchMock.mock.calls[0][1].body).agent.spec.config).toMatchObject({iteration_limit:7,dynamic_sub_agents:{enabled:true,max_parallel:2}});});
+
   it('creates a session, executes a turn, maps events, and captures the result',async()=>{
     trueForgeConfig.enabled=true;
     const fetchMock=vi.fn().mockResolvedValueOnce(Response.json({id:'session-1'})).mockResolvedValueOnce(streamResponse([

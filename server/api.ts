@@ -235,9 +235,34 @@ function apiPlugin(config = {}) {
   };
 }
 
+async function handleBoundGithubRequest(request, response, database, pathname) {
+  const segments = pathname.split('/').filter(Boolean);
+  if (segments.length !== 4 || segments[0] !== 'api' || segments[1] !== 'runs' || !['github-commit', 'github-pr'].includes(segments[3]) || request.method !== 'POST') return false;
+  const id = segments[2];
+  const run = runRecord(database, id);
+  if (!run) { json(response, 404, { error: 'Run not found' }); return true; }
+  if (run.approvalStatus !== 'approved') { json(response, 409, { error: 'Explicit approval is required before external GitHub writes' }); return true; }
+  if (!run.branch) { json(response, 409, { error: 'The approved run has no optimization branch' }); return true; }
+  const body = await readBody(request);
+  if (segments[3] === 'github-commit') {
+    if (!Array.isArray(run.patchFiles) || run.patchFiles.length === 0) { json(response, 409, { error: 'The approved run has no persisted patch files' }); return true; }
+    const commit = await commitOptimizationChanges(run.repositoryUrl, run.branch.optimizationBranch, run.patchFiles, body.message);
+    const branch = { ...run.branch, resultingCommitSha: commit.commitSha };
+    database.prepare('UPDATE optimization_runs SET branch_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(branch), new Date().toISOString(), id);
+    json(response, 201, { ...runRecord(database, id), commit });
+    return true;
+  }
+  if (!run.branch.resultingCommitSha) { json(response, 409, { error: 'A resulting optimization commit is required before creating a pull request' }); return true; }
+  const pullRequest = await createPullRequest(run.repositoryUrl, run.branch.optimizationBranch, run.branch.baseBranch, body.title, body.body);
+  database.prepare('UPDATE optimization_runs SET pull_request_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify({ number: pullRequest.number, url: pullRequest.url, title: pullRequest.title, status: 'created', branch: run.branch }), new Date().toISOString(), id);
+  json(response, 201, runRecord(database, id));
+  return true;
+}
+
 async function handleRequest(request, response, next, database, config = {}) {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
   if (pathname.startsWith('/api/trueforge')) return proxyTrueForge(request, response, config);
+  if (await handleBoundGithubRequest(request, response, database, pathname)) return;
   if (!pathname.startsWith('/api/runs') && !pathname.startsWith('/api/candidates') && !pathname.startsWith('/api/github') && !pathname.startsWith('/api/repositories')) return next();
   try {
     const segments = pathname.split('/').filter(Boolean);

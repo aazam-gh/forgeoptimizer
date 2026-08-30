@@ -37,6 +37,10 @@ describe('TrueForge session and turn integration',()=>{
     expect(result.patchFiles).toEqual([]);
   });
 
+  it('accepts CRLF streams and a final event without a trailing separator',async()=>{trueForgeConfig.enabled=true;const body='data: {"type":"turn.created","id":"turn-crlf"}\r\n\r\ndata: {"type":"model.message","content":"{\\"files\\":[]}"}\r\n';vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(Response.json({id:'session-crlf'})).mockResolvedValueOnce(new Response(body,{headers:{'Content-Type':'text/event-stream'}})));const result=await runTrueForgeOrchestrator('fixture://app',()=>undefined,{maxRetries:0});expect(result).toMatchObject({mode:'trueforge',turnId:'turn-crlf',finalResult:{files:[]}});});
+
+  it('turns a remote turn.error into an explicit fallback',async()=>{trueForgeConfig.enabled=true;vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(Response.json({id:'session-error'})).mockResolvedValueOnce(streamResponse([{type:'turn.error',detail:'provider failed'}])));const result=await runTrueForgeOrchestrator('fixture://app',()=>undefined,{maxRetries:0});expect(result).toMatchObject({mode:'local-deterministic',fallbackReason:'trueforge-unavailable',failureReason:'provider failed'});});
+
   it('returns an explicit deterministic fallback when TrueForge fails',async()=>{
     trueForgeConfig.enabled=true;
     vi.stubGlobal('fetch',vi.fn().mockRejectedValue(new Error('server unavailable')));

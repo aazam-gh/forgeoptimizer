@@ -20,9 +20,9 @@ describe('V2 safety and evidence primitives', () => {
     });
 
     const localOnly = await instrumentInvocation({ provider: 'OpenAI', callSite: { file: 'src/a.ts', line: 4 }, captureLevel: 'full_local_only', metadata }, async () => 'ok');
-    expect(localOnly.invocation.metadata).toEqual(metadata);
+    expect(localOnly.invocation.metadata).toEqual({ response: { prompt: 'private prompt', authorization: '[REDACTED]' } });
     metadata.response.content = 'changed after capture';
-    expect(localOnly.invocation.metadata.response).toEqual({ prompt: 'private prompt', authorization: 'Bearer sk-test_123456789012' });
+    expect(localOnly.invocation.metadata.response).toEqual({ prompt: 'private prompt', authorization: '[REDACTED]' });
 
     const circular: Record<string, unknown> = {};
     circular.self = circular;
@@ -58,6 +58,18 @@ describe('V2 safety and evidence primitives', () => {
     expect(plan.steps.find(step => step.candidateId === 'c2')?.dependsOn).toEqual(['step-c1']);
     const projection = projectSavings(result.before, { ...result.before, cost: result.before.cost / 2 }, 100);
     expect(projection.monthlySavings).toBeGreaterThan(projection.dailySavings);
+  });
+
+  it('uses candidate evidence when calculating plan scores', () => {
+    const result = analyzeFixture();
+    const candidate = { ...result.candidates[0], frequencyPerDay: 10000, testCoverage: .9, complexity: 2 };
+    const plan = buildOptimizationPlan('evidence-score', [candidate]);
+    expect(plan.steps[0].score).toBe(plan.steps[0].scoreBreakdown?.value);
+    expect(plan.steps[0].score).not.toBe(buildOptimizationPlan('default-score', [result.candidates[0]]).steps[0].score);
+  });
+
+  it('normalizes whitespace when fingerprinting equivalent requests', async () => {
+    await expect(fingerprintRequest('OpenAI', 'gpt-4.1', 'src/a.ts:4', 'one  two\nthree')).resolves.toBe(await fingerprintRequest('openai', 'gpt-4.1', 'src/a.ts:4', ' one two\tthree '));
   });
 
   it('rejects plans with filtered, missing, or circular dependencies', () => {

@@ -103,6 +103,28 @@ function appendEvent(database, runId, event) {
   database.prepare('INSERT OR REPLACE INTO agent_events (id, run_id, label, status, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(event.id ?? randomUUID(), runId, event.label, event.status, event.detail, new Date().toISOString());
 }
 
+function streamEvents(response, database, runId) {
+  response.statusCode = 200;
+  response.setHeader('Content-Type', 'text/event-stream');
+  response.setHeader('Cache-Control', 'no-cache');
+  response.setHeader('Connection', 'keep-alive');
+  const sent = new Set();
+  const flush = () => {
+    const run = runRecord(database, runId);
+    if (!run) { response.end(); return; }
+    for (const event of run.events) {
+      if (sent.has(event.id)) continue;
+      sent.add(event.id);
+      response.write(`event: agent\ndata: ${JSON.stringify(event)}\n\n`);
+    }
+    response.write(': keep-alive\n\n');
+    if (['completed', 'failed', 'cancelled'].includes(run.status)) response.end();
+  };
+  flush();
+  const interval = setInterval(flush, 1000);
+  response.on('close', () => clearInterval(interval));
+}
+
 function updateRun(database, id, patch) {
   const current = database.prepare('SELECT * FROM optimization_runs WHERE id = ?').get(id);
   if (!current) return null;
@@ -154,7 +176,7 @@ async function handleRequest(request, response, next, database) {
     if (request.method === 'GET' && segments[3] === 'events') {
       const run = runRecord(database, id);
       if (!run) return json(response, 404, { error: 'Run not found' });
-      response.statusCode = 200; response.setHeader('Content-Type', 'text/event-stream'); response.setHeader('Cache-Control', 'no-cache'); response.end(run.events.map(event => `event: agent\ndata: ${JSON.stringify(event)}\n\n`).join(''));
+      streamEvents(response, database, id);
       return;
     }
     if (request.method === 'POST' && segments[3] === 'events') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const event = await readBody(request); if (!event.id || !event.label || !event.status || !event.detail) return json(response, 400, { error: 'Event id, label, status, and detail are required' }); appendEvent(database, id, event); return json(response, 201, runRecord(database, id)); }

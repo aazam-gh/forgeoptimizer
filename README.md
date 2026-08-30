@@ -31,6 +31,8 @@ Open the Vite URL and click **Analyze repository**. The default fixture URL is r
 
 The local development server also exposes a SQLite-backed run API at `/api/runs`. Create a run with `POST /api/runs`, inspect candidates/results with `GET /api/runs/:id/candidates` and `GET /api/runs/:id/results`, start or cancel it with `POST /api/runs/:id/start` and `POST /api/runs/:id/cancel`, submit a plan with `POST /api/runs/:id/plan`, append events with `POST /api/runs/:id/events`, approve with `POST /api/runs/:id/approve`, publish with `POST /api/runs/:id/publish`, approve or reject candidates with `POST /api/candidates/:id/approve` and `POST /api/candidates/:id/reject`, and consume persisted agent events from `GET /api/runs/:id/events`. The database is created under `.data/` and is ignored by Git.
 
+When configured with a server-only `GITHUB_TOKEN`, the API also exposes explicit GitHub operations: inspect a repository via `POST /api/github/repository`, create a `forgeoptimizer/run-{short-id}` branch via `POST /api/github/branch`, and create a pull request via `POST /api/github/pull-request` with `approved: true`. The browser never receives the token, and the adapter never merges or pushes to the default branch.
+
 ## TrueForge
 
 TrueForge is the intended orchestration runtime for the root Optimization Orchestrator. The browser calls a same-origin proxy in `src/trueforge.ts`; the Vite server keeps `TRUEFORGE_API_KEY` server-side and falls back explicitly to local deterministic analysis when the proxy is unavailable. Start the pinned local server with `npx @truefoundry/trueforge@0.1.4 --port 8790`, then configure `.env` from `.env.example`.

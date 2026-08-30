@@ -1,6 +1,6 @@
 import type { Run, RunStatus } from './domain';
 
-type PersistedRun=Pick<Run,'id'|'repositoryUrl'|'status'|'mode'|'approvalStatus'|'createdAt'|'updatedAt'|'failureReason'|'fallbackReason'|'trueForgeSessionId'|'trueForgeTurnId'|'events'|'candidates'|'usages'|'before'|'plan'|'branch'|'pullRequest'> & {policy?:unknown};
+type PersistedRun=Pick<Run,'id'|'repositoryUrl'|'status'|'mode'|'approvalStatus'|'createdAt'|'updatedAt'|'failureReason'|'fallbackReason'|'trueForgeSessionId'|'trueForgeTurnId'|'events'|'candidates'|'usages'|'before'|'baseline'|'evaluations'|'plan'|'branch'|'pullRequest'> & {policy?:unknown};
 
 async function request<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(path,{...init,headers:{'Content-Type':'application/json',...init?.headers}});if(!response.ok)throw new Error(`Run API ${response.status}: ${await response.text()}`);return response.json() as Promise<T>;}
 export function createPersistedRun(input:Pick<Run,'repositoryUrl'|'candidates'|'usages'|'before'|'approvalStatus'> & {policy?:unknown}):Promise<PersistedRun>{return request<PersistedRun>('/api/runs',{method:'POST',body:JSON.stringify(input)});}

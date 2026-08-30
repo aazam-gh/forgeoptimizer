@@ -679,7 +679,12 @@ function apiPlugin(config = {}) {
   };
 }
 
-async function handleBoundGithubRequest(request, response, database, pathname) {
+async function handleBoundGithubRequest(
+  request,
+  response,
+  database,
+  pathname,
+) {
   const segments = pathname.split("/").filter(Boolean);
   if (
     segments.length !== 4 ||
@@ -701,6 +706,7 @@ async function handleBoundGithubRequest(request, response, database, pathname) {
     });
     return true;
   }
+  if (!authorizeGithubInspection(request, response)) return true;
   if (!run.branch) {
     json(response, 409, {
       error: "The approved run has no optimization branch",
@@ -767,7 +773,9 @@ async function handleRequest(request, response, next, database, config = {}) {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
   if (pathname.startsWith("/api/trueforge"))
     return proxyTrueForge(request, response, config);
-  if (await handleBoundGithubRequest(request, response, database, pathname))
+  if (
+    await handleBoundGithubRequest(request, response, database, pathname)
+  )
     return;
   if (
     !pathname.startsWith("/api/runs") &&
@@ -1075,6 +1083,7 @@ async function handleRequest(request, response, next, database, config = {}) {
       );
     }
     if (request.method === "POST" && segments[3] === "github-branch") {
+      if (!authorizeGithubInspection(request, response)) return;
       const run = runRecord(database, id);
       if (!run) return json(response, 404, { error: "Run not found" });
       if (run.approvalStatus !== "approved")
@@ -1108,6 +1117,7 @@ async function handleRequest(request, response, next, database, config = {}) {
       return json(response, 201, runRecord(database, id));
     }
     if (request.method === "POST" && segments[3] === "github-pr") {
+      if (!authorizeGithubInspection(request, response)) return;
       const run = runRecord(database, id);
       if (!run) return json(response, 404, { error: "Run not found" });
       if (run.approvalStatus !== "approved")

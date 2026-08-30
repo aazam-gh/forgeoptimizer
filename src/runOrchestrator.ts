@@ -73,7 +73,7 @@ export async function executeOptimizationRun(
   const evaluationResults: EvaluationResult[] = [];
   run = withStatus(run, "planning", { stage: "planning" });
   const candidateResults: ScenarioExecutionResult[] = [];
-  const plan = buildOptimizationPlan(`plan-${run.id}`, candidates);
+  const plan = buildOptimizationPlan(`plan-${run.id}`, candidates, run.policy);
   const loop = plan.valid
     ? await runOptimizationLoop(
         plan,

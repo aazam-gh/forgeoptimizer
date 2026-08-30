@@ -25,6 +25,24 @@ function openDatabase() {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS ai_invocations (
+      id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      model TEXT,
+      call_site_json TEXT NOT NULL,
+      input_tokens INTEGER,
+      output_tokens INTEGER,
+      latency_ms INTEGER,
+      cost REAL,
+      cache_hit INTEGER,
+      retry_count INTEGER,
+      error INTEGER,
+      request_fingerprint TEXT,
+      capture_level TEXT NOT NULL,
+      metadata_json TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS optimization_runs (
       id TEXT PRIMARY KEY,
       repository_url TEXT NOT NULL,
@@ -122,11 +140,20 @@ function createRun(database, input) {
   try { const parsed = new URL(repositoryUrl); if (parsed.hostname === 'github.com') { [owner, name] = parsed.pathname.split('/').filter(Boolean); name = name?.replace(/\.git$/, '') ?? null; } } catch { /* fixture URLs have no repository identity */ }
   database.prepare('INSERT INTO repositories (id, url, owner, name, default_branch, last_analyzed_commit, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET default_branch = excluded.default_branch, last_analyzed_commit = excluded.last_analyzed_commit, updated_at = excluded.updated_at').run(randomUUID(), repositoryUrl, owner, name, input.sourceBranch ?? null, input.sourceCommitSha ?? null, now, now);
   database.prepare('INSERT INTO optimization_runs (id, repository_url, source_branch, source_commit_sha, requests_per_day, scenarios_json, status, mode, policy_json, candidates_json, usages_json, before_json, approval_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, repositoryUrl, input.sourceBranch ?? null, input.sourceCommitSha ?? null, input.requestsPerDay ?? null, JSON.stringify(input.scenarios ?? []), 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), JSON.stringify(input.usages ?? []), JSON.stringify(input.before ?? {}), input.approvalStatus ?? 'pending', now, now);
+  for (const invocation of input.usages ?? []) appendInvocation(database, id, invocation);
   return runRecord(database, id);
 }
 
 function appendEvent(database, runId, event) {
   database.prepare('INSERT OR REPLACE INTO agent_events (id, run_id, label, status, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)').run(event.id ?? randomUUID(), runId, event.label, event.status, event.detail, new Date().toISOString());
+}
+
+function appendInvocation(database, runId, invocation) {
+  database.prepare('INSERT OR REPLACE INTO ai_invocations (id, run_id, provider, model, call_site_json, input_tokens, output_tokens, latency_ms, cost, cache_hit, retry_count, error, request_fingerprint, capture_level, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(invocation.id ?? randomUUID(), runId, invocation.provider, invocation.model ?? null, JSON.stringify(invocation.callSite ?? {}), invocation.inputTokens ?? null, invocation.outputTokens ?? null, invocation.latencyMs ?? null, invocation.cost ?? null, invocation.cacheHit ? 1 : 0, invocation.retryCount ?? null, invocation.error ? 1 : 0, invocation.requestFingerprint ?? null, invocation.captureLevel, JSON.stringify(invocation.metadata ?? {}), new Date().toISOString());
+}
+
+function invocationRecords(database, runId) {
+  return database.prepare('SELECT id, provider, model, call_site_json AS callSite, input_tokens AS inputTokens, output_tokens AS outputTokens, latency_ms AS latencyMs, cost, cache_hit AS cacheHit, retry_count AS retryCount, error, request_fingerprint AS requestFingerprint, capture_level AS captureLevel, metadata_json AS metadata, created_at AS createdAt FROM ai_invocations WHERE run_id = ? ORDER BY created_at').all(runId).map(invocation => ({ ...invocation, callSite: JSON.parse(invocation.callSite), metadata: JSON.parse(invocation.metadata), cacheHit: Boolean(invocation.cacheHit), error: Boolean(invocation.error) }));
 }
 
 function streamEvents(response, database, runId) {
@@ -237,6 +264,8 @@ async function handleRequest(request, response, next, database, config = {}) {
     if (request.method === 'POST' && segments[3] === 'github-commit') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); if (run.approvalStatus !== 'approved') return json(response, 409, { error: 'Explicit approval is required before committing optimization changes' }); if (!run.branch) return json(response, 409, { error: 'Optimization branch must be created first' }); const body = await readBody(request); const commit = await commitOptimizationChanges(body.repositoryUrl ?? run.repositoryUrl, run.branch.optimizationBranch, body.files, body.message); const branch = { ...run.branch, resultingCommitSha: commit.commitSha }; database.prepare('UPDATE optimization_runs SET branch_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(branch), new Date().toISOString(), id); return json(response, 201, { ...runRecord(database, id), commit }); }
     if (request.method === 'GET' && segments.length === 3) { const run = runRecord(database, id); return run ? json(response, 200, run) : json(response, 404, { error: 'Run not found' }); }
     if (request.method === 'GET' && segments[3] === 'candidates') { const run = runRecord(database, id); return run ? json(response, 200, { candidates: run.candidates }) : json(response, 404, { error: 'Run not found' }); }
+    if (request.method === 'GET' && segments[3] === 'invocations') { const run = runRecord(database, id); return run ? json(response, 200, { invocations: invocationRecords(database, id) }) : json(response, 404, { error: 'Run not found' }); }
+    if (request.method === 'POST' && segments[3] === 'invocations') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const body = await readBody(request); if (!body.id || !body.provider || !body.captureLevel) return json(response, 400, { error: 'Invocation id, provider, and capture level are required' }); appendInvocation(database, id, body); return json(response, 201, { invocation: invocationRecords(database, id).find(invocation => invocation.id === body.id) }); }
     if (request.method === 'GET' && segments[3] === 'results') { const run = runRecord(database, id); return run ? json(response, 200, { ...run, reportReady: Boolean(run.after || run.baseline || run.evaluations || run.plan) }) : json(response, 404, { error: 'Run not found' }); }
     if (request.method === 'POST' && segments[3] === 'results') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const body = await readBody(request); if (!body.after) return json(response, 400, { error: 'After metrics are required' }); database.prepare('UPDATE optimization_runs SET after_json = ?, projection_json = ?, validation_json = ?, patch_files_json = ?, optimizer_usage_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(body.after), body.projection ? JSON.stringify(body.projection) : null, body.validation ? JSON.stringify(body.validation) : null, Array.isArray(body.patchFiles) ? JSON.stringify(body.patchFiles) : null, body.optimizerUsage ? JSON.stringify(body.optimizerUsage) : null, new Date().toISOString(), id); return json(response, 200, runRecord(database, id)); }
     if (request.method === 'GET' && segments[3] === 'events') {

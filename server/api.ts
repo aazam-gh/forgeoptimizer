@@ -35,6 +35,7 @@ function openDatabase() {
       FOREIGN KEY (run_id) REFERENCES optimization_runs(id)
     );
   `);
+  try { database.exec('ALTER TABLE optimization_runs ADD COLUMN plan_json TEXT'); } catch { /* already migrated */ }
   return database;
 }
 
@@ -76,6 +77,19 @@ function updateRun(database, id, patch) {
   return runRecord(database, id);
 }
 
+function updateCandidates(database, candidateId, accepted) {
+  const runs = database.prepare('SELECT id, candidates_json FROM optimization_runs').all();
+  for (const run of runs) {
+    const candidates = JSON.parse(run.candidates_json);
+    const index = candidates.findIndex(candidate => candidate.id === candidateId);
+    if (index === -1) continue;
+    candidates[index] = { ...candidates[index], accepted };
+    database.prepare('UPDATE optimization_runs SET candidates_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(candidates), new Date().toISOString(), run.id);
+    return runRecord(database, run.id);
+  }
+  return null;
+}
+
 function apiPlugin() {
   const database = openDatabase();
   return {
@@ -87,13 +101,15 @@ function apiPlugin() {
 
 async function handleRequest(request, response, next, database) {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
-  if (!pathname.startsWith('/api/runs')) return next();
+  if (!pathname.startsWith('/api/runs') && !pathname.startsWith('/api/candidates')) return next();
   try {
     const segments = pathname.split('/').filter(Boolean);
     if (request.method === 'POST' && segments.length === 2) return json(response, 201, createRun(database, await readBody(request)));
     const id = segments[2];
     if (!id) return json(response, 400, { error: 'Run ID is required' });
     if (request.method === 'GET' && segments.length === 3) { const run = runRecord(database, id); return run ? json(response, 200, run) : json(response, 404, { error: 'Run not found' }); }
+    if (request.method === 'GET' && segments[3] === 'candidates') { const run = runRecord(database, id); return run ? json(response, 200, { candidates: run.candidates }) : json(response, 404, { error: 'Run not found' }); }
+    if (request.method === 'GET' && segments[3] === 'results') { const run = runRecord(database, id); return run ? json(response, 200, { status: run.status, mode: run.mode, candidates: run.candidates, events: run.events }) : json(response, 404, { error: 'Run not found' }); }
     if (request.method === 'GET' && segments[3] === 'events') {
       const run = runRecord(database, id);
       if (!run) return json(response, 404, { error: 'Run not found' });
@@ -102,6 +118,9 @@ async function handleRequest(request, response, next, database) {
     }
     if (request.method === 'POST' && segments[3] === 'start') return json(response, 200, updateRun(database, id, { status: 'preparing' }));
     if (request.method === 'POST' && segments[3] === 'cancel') return json(response, 200, updateRun(database, id, { status: 'cancelled' }));
+    if (request.method === 'POST' && segments[3] === 'plan') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const body = await readBody(request); database.prepare('UPDATE optimization_runs SET plan_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(body), new Date().toISOString(), id); return json(response, 200, { ...run, plan: body }); }
+    if (request.method === 'POST' && segments[3] === 'publish') return json(response, 200, updateRun(database, id, { status: 'publishing' }));
+    if (request.method === 'POST' && segments[1] === 'candidates' && segments[3] && ['approve', 'reject'].includes(segments[3])) { const run = updateCandidates(database, segments[2], segments[3] === 'approve'); return run ? json(response, 200, run) : json(response, 404, { error: 'Candidate not found' }); }
     return json(response, 404, { error: 'Unsupported run endpoint' });
   } catch (error) { return json(response, 400, { error: error instanceof Error ? error.message : 'Invalid request' }); }
 }

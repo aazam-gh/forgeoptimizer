@@ -29,7 +29,7 @@ pnpm build
 
 Open the Vite URL and click **Analyze repository**. The default fixture URL is ready to run.
 
-The local development server also exposes a SQLite-backed run API at `/api/runs`. Create a run with `POST /api/runs`, inspect it with `GET /api/runs/:id`, start or cancel it with `POST /api/runs/:id/start` and `POST /api/runs/:id/cancel`, and consume persisted agent events from `GET /api/runs/:id/events`. The database is created under `.data/` and is ignored by Git.
+The local development server also exposes a SQLite-backed run API at `/api/runs`. Create a run with `POST /api/runs`, inspect candidates/results with `GET /api/runs/:id/candidates` and `GET /api/runs/:id/results`, start or cancel it with `POST /api/runs/:id/start` and `POST /api/runs/:id/cancel`, submit a plan with `POST /api/runs/:id/plan`, publish with `POST /api/runs/:id/publish`, approve or reject candidates with `POST /api/candidates/:id/approve` and `POST /api/candidates/:id/reject`, and consume persisted agent events from `GET /api/runs/:id/events`. The database is created under `.data/` and is ignored by Git.
 
 ## TrueForge
 

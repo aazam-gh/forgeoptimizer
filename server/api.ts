@@ -312,6 +312,9 @@ function createRun(database, input) {
       .get(input.id)
   )
     return runRecord(database, input.id);
+  const scenarioErrors = validateScenarios(input.scenarios ?? []);
+  if (scenarioErrors.length)
+    throw new Error(`Invalid scenarios: ${scenarioErrors.join("; ")}`);
   const repositoryUrl = input.repositoryUrl ?? "fixture://inefficient-ai-app";
   let owner = null;
   let name = null;

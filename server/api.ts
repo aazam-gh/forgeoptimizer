@@ -880,9 +880,15 @@ async function handleRequest(request, response, next, database, config = {}) {
       const run = runRecord(database, id);
       if (!run) return json(response, 404, { error: "Run not found" });
       const body = await readBody(request);
-      if (!body.id || !body.provider || !body.captureLevel)
+      const captureLevels = ["metadata_only", "redacted"];
+      if (
+        !body.id ||
+        !body.provider ||
+        !captureLevels.includes(body.captureLevel)
+      )
         return json(response, 400, {
-          error: "Invocation id, provider, and capture level are required",
+          error:
+            "Invocation id, provider, and a safe capture level are required",
         });
       appendInvocation(database, id, body);
       return json(response, 201, {
@@ -919,23 +925,7 @@ async function handleRequest(request, response, next, database, config = {}) {
             : null,
           body.validationEvidence !== undefined
             ? JSON.stringify(assessValidationGate(body.validationEvidence))
-            : body.validation !== undefined &&
-                body.validation &&
-                typeof body.validation === "object" &&
-                ["PASS", "FAIL", "NOT_VERIFIED"].includes(
-                  body.validation.state,
-                ) &&
-                typeof body.validation.canPublish === "boolean" &&
-                body.validation.checks &&
-                typeof body.validation.checks === "object" &&
-                Array.isArray(body.validation.reasons)
-              ? JSON.stringify({
-                  state: body.validation.state,
-                  canPublish: body.validation.canPublish,
-                  checks: body.validation.checks,
-                  reasons: body.validation.reasons,
-                })
-              : null,
+            : null,
           body.patchFiles !== undefined
             ? JSON.stringify(body.patchFiles)
             : null,

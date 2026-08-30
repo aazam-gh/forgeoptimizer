@@ -630,9 +630,11 @@ export default function App() {
   useEffect(() => {
     const id = localStorage.getItem("forgeoptimizer:last-run-id");
     if (!id) return;
+    let active = true;
     let unsubscribe = () => undefined;
     void getPersistedRun(id)
       .then((persisted) => {
+        if (!active) return;
         setRun(
           (current) =>
             current ?? {
@@ -666,8 +668,9 @@ export default function App() {
                 ? 3
                 : 0,
         );
-        unsubscribe = subscribeToRunEvents(id, (event) =>
+        const close = subscribeToRunEvents(id, (event) =>
           setRun((current) =>
+            active &&
             current &&
             current.id === id &&
             current.events.every((existing) => existing.id !== event.id)
@@ -675,9 +678,16 @@ export default function App() {
               : current,
           ),
         );
+        if (active) unsubscribe = close;
+        else close();
       })
-      .catch(() => localStorage.removeItem("forgeoptimizer:last-run-id"));
-    return () => unsubscribe();
+      .catch(() => {
+        if (active) localStorage.removeItem("forgeoptimizer:last-run-id");
+      });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
   }, []);
   function setAccepted(id: string, accepted: boolean) {
     setRun((c) => {

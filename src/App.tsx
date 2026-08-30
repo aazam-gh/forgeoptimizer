@@ -37,6 +37,7 @@ import {
   inspectRepositoryCommit,
   listRepositoryBranches,
   listPersistedRuns,
+  listPersistedRepositories,
   submitPersistedBaseline,
   submitPersistedEvaluations,
   submitPersistedPlan,
@@ -142,6 +143,9 @@ export default function App() {
   const [commitSha, setCommitSha] = useState("");
   const [requestsPerDay, setRequestsPerDay] = useState(1000);
   const [branches, setBranches] = useState<string[]>([]);
+  const [repositories, setRepositories] = useState<
+    { id: string; url: string; name?: string }[]
+  >([]);
   const [repoStatus, setRepoStatus] = useState("");
   const [run, setRun] = useState<Run | null>(null);
   const [stage, setStage] = useState(0);
@@ -162,6 +166,11 @@ export default function App() {
       localStorage.getItem("forgeoptimizer:requests-per-day"),
     );
     if (Number.isFinite(stored) && stored >= 0) setRequestsPerDay(stored);
+  }, []);
+  useEffect(() => {
+    void listPersistedRepositories()
+      .then(setRepositories)
+      .catch(() => setRepositories([]));
   }, []);
   useEffect(() => {
     if (
@@ -731,6 +740,7 @@ export default function App() {
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 placeholder="https://github.com/you/your-ai-app"
+                list="connected-repositories"
               />
             </div>
             <div className="input-wrap branch-input">
@@ -767,6 +777,13 @@ export default function App() {
         <datalist id="repo-branches">
           {branches.map((item) => (
             <option value={item} key={item} />
+          ))}
+        </datalist>
+        <datalist id="connected-repositories">
+          {repositories.map((repository) => (
+            <option value={repository.url} key={repository.id}>
+              {repository.name ?? repository.url}
+            </option>
           ))}
         </datalist>
         <div className="stepper">

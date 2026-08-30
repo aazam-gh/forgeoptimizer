@@ -107,6 +107,19 @@ export function readPersistedRepositorySource(
 export function listPersistedRuns(): Promise<PersistedRun[]> {
   return request<PersistedRun[]>("/api/runs");
 }
+export type RepositoryRecord = {
+  id: string;
+  url: string;
+  owner?: string;
+  name?: string;
+  defaultBranch?: string;
+  lastAnalyzedCommit?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+export function listPersistedRepositories(): Promise<RepositoryRecord[]> {
+  return request<RepositoryRecord[]>("/api/repositories");
+}
 export function getRepositoryHistory(repositoryUrl: string): Promise<{
   repositoryUrl: string;
   aiSpend: number;

@@ -356,6 +356,7 @@ function runRecord(database, id) {
       : undefined,
     optimizerUsage,
     optimizerCost: optimizerUsage?.cost,
+    invocations: invocationRecords(database, run.id),
     candidates: JSON.parse(run.candidates_json),
     usages: JSON.parse(run.usages_json),
     before: JSON.parse(run.before_json),

@@ -1386,8 +1386,20 @@ function Metric({
   );
 }
 function CallGraphSummary({ run }: { run: Run }) {
+  const runtimeUsages = (run.invocations ?? []).map((invocation) => ({
+    id: invocation.id,
+    file: invocation.callSite.file,
+    line: invocation.callSite.line ?? 0,
+    functionName: invocation.callSite.functionName ?? "anonymous",
+    provider: invocation.provider,
+    model: invocation.model,
+    purpose: "Runtime invocation",
+    inputTokens: invocation.inputTokens ?? 0,
+    outputTokens: invocation.outputTokens ?? 0,
+    quality: "MEASURED" as const,
+  }));
   const graph = buildAIUsageGraph(
-    run.usages,
+    runtimeUsages.length ? runtimeUsages : run.usages,
     run.candidates.map((candidate) => candidate.usageId),
   );
   return (
@@ -1554,6 +1566,19 @@ function RepositorySummary({ repositoryUrl }: { repositoryUrl: string }) {
   );
 }
 function UsageTable({ run }: { run: Run }) {
+  const runtimeUsages = (run.invocations ?? []).map((invocation) => ({
+    id: invocation.id,
+    file: invocation.callSite.file,
+    line: invocation.callSite.line ?? 0,
+    functionName: invocation.callSite.functionName ?? "anonymous",
+    provider: invocation.provider,
+    model: invocation.model,
+    purpose: "Runtime invocation",
+    inputTokens: invocation.inputTokens ?? 0,
+    outputTokens: invocation.outputTokens ?? 0,
+    quality: "MEASURED" as const,
+  }));
+  const usages = runtimeUsages.length ? runtimeUsages : run.usages;
   return (
     <div className="panel usage-panel">
       <div className="panel-head">
@@ -1562,7 +1587,7 @@ function UsageTable({ run }: { run: Run }) {
           <h2>Observed AI usage</h2>
         </div>
         <span className="tiny-badge">
-          {run.usages
+          {usages
             .reduce(
               (sum, usage) => sum + usage.inputTokens + usage.outputTokens,
               0,
@@ -1578,7 +1603,7 @@ function UsageTable({ run }: { run: Run }) {
           <span>Tokens</span>
           <span>Quality</span>
         </div>
-        {run.usages.map((usage) => (
+        {usages.map((usage) => (
           <div className="usage-row" key={usage.id}>
             <span>
               <strong>{usage.functionName}</strong>

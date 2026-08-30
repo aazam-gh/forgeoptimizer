@@ -111,6 +111,7 @@ export interface Run {
   completedAt?: string;
   optimizerUsage?: RunMetrics;
   optimizerCost?: number;
+  invocations?: AIInvocation[];
   usages: AiUsage[];
   candidates: Candidate[];
   before: RunMetrics;

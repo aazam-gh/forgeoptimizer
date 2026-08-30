@@ -31,6 +31,7 @@ type PersistedRun = Pick<
   | "optimizerUsage"
   | "optimizerCost"
   | "projection"
+  | "invocations"
 > & { policy?: OptimizationPolicy };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

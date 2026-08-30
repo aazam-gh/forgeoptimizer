@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { canTransition } from '../src/runState.ts';
 import { createOptimizationBranch, createPullRequest, inspectRepository } from './github.ts';
+import { assessValidationGate } from '../src/validation.ts';
 
 const databasePath = join(process.cwd(), '.data', 'forgeoptimizer.sqlite');
 
@@ -128,7 +129,7 @@ async function handleRequest(request, response, next, database) {
     const segments = pathname.split('/').filter(Boolean);
     if (request.method === 'POST' && pathname === '/api/github/repository') { const body = await readBody(request); return json(response, 200, await inspectRepository(body.repositoryUrl, body.branch)); }
     if (request.method === 'POST' && pathname === '/api/github/branch') { const body = await readBody(request); return json(response, 201, await createOptimizationBranch(body.repositoryUrl, body.baseBranch, body.branchName)); }
-    if (request.method === 'POST' && pathname === '/api/github/pull-request') { const body = await readBody(request); if (body.approved !== true) return json(response, 409, { error: 'Explicit approval is required before creating a pull request' }); return json(response, 201, await createPullRequest(body.repositoryUrl, body.head, body.base, body.title, body.body)); }
+    if (request.method === 'POST' && pathname === '/api/github/pull-request') { const body = await readBody(request); if (body.approved !== true) return json(response, 409, { error: 'Explicit approval is required before creating a pull request' }); const validation = assessValidationGate(body.validation ?? {}); if (!validation.canPublish) return json(response, 409, { error: 'Validation gate is not complete', validation }); return json(response, 201, await createPullRequest(body.repositoryUrl, body.head, body.base, body.title, body.body)); }
     if (request.method === 'POST' && segments.length === 2) return json(response, 201, createRun(database, await readBody(request)));
     if (request.method === 'GET' && segments.length === 2) return json(response, 200, runRecords(database));
     const id = segments[2];

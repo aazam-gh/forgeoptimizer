@@ -38,7 +38,7 @@ configured external integrations; unavailable remote execution is reported as
 
 ## Local setup
 
-1. Run `npx @truefoundry/trueforge@0.1.4 --port 8790`.
+1. Run the reviewed, pinned CLI: `npx @truefoundry/trueforge@0.1.4 --port 8790`. Update this version only through normal dependency review.
 2. Copy `.env.example` to `.env`.
 3. Keep `TRUEFORGE_API_KEY` server-only; set `VITE_TRUEFORGE_PROXY_ENABLED=true` to enable the proxy path.
 4. Run `pnpm dev` and open `http://localhost:5188`.

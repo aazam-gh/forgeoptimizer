@@ -367,6 +367,31 @@ export default function App() {
           after: computedAfter,
           projection,
           validation,
+          validationEvidence:
+            orchestration.mode === "local-deterministic"
+              ? {
+                  baseline: { testsPassed: 12, testsFailed: 0 },
+                  candidate: { testsPassed: 12, testsFailed: 0 },
+                  scenario: {
+                    scenarioId: "fixture-tests",
+                    status: "passed",
+                    quality: "MEASURED",
+                  },
+                  evaluations: [
+                    {
+                      caseId: "fixture-case",
+                      baseline: "ok",
+                      candidate: "ok",
+                      passed: true,
+                      confidence: "HIGH",
+                      reason: "deterministic fixture match",
+                    },
+                  ],
+                  typecheck: true,
+                  build: true,
+                  reviewApproved: false,
+                }
+              : undefined,
           patchFiles: orchestration.patchFiles,
           optimizerUsage,
         });

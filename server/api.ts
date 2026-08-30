@@ -355,7 +355,7 @@ function createRun(database, input) {
       JSON.stringify(input.candidates ?? []),
       JSON.stringify(input.usages ?? []),
       JSON.stringify(input.before ?? {}),
-      input.approvalStatus ?? "pending",
+      "pending",
       now,
       now,
     );
@@ -914,8 +914,8 @@ async function handleRequest(request, response, next, database, config = {}) {
           body.projection !== undefined
             ? JSON.stringify(body.projection)
             : null,
-          body.validation !== undefined
-            ? JSON.stringify(body.validation)
+          body.validationEvidence !== undefined
+            ? JSON.stringify(assessValidationGate(body.validationEvidence))
             : null,
           body.patchFiles !== undefined
             ? JSON.stringify(body.patchFiles)
@@ -1054,9 +1054,9 @@ async function handleRequest(request, response, next, database, config = {}) {
           error: "Explicit approval is required before creating a pull request",
         });
       const pullRequest = await createPullRequest(
-        body.repositoryUrl ?? run.repositoryUrl,
-        body.head,
-        body.base,
+        run.repositoryUrl,
+        run.branch.optimizationBranch,
+        run.branch.baseBranch,
         body.title,
         body.body,
       );

@@ -180,6 +180,7 @@ export function submitPersistedResults(
     after: Run["after"];
     projection?: Run["projection"];
     validation?: Run["validation"];
+    validationEvidence?: Record<string, unknown>;
     patchFiles?: Run["patchFiles"];
     optimizerUsage?: Run["optimizerUsage"];
   },

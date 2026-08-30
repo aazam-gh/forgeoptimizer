@@ -1,0 +1,15 @@
+export type PatchValidation={valid:boolean;changedFiles:string[];errors:string[]};
+
+export function validateCandidatePatch(diff:string,maxFiles=15):PatchValidation{
+  const errors:string[]=[];
+  if(!diff.trim())return{valid:true,changedFiles:[],errors:[]};
+  if(diff.includes('GIT binary patch'))errors.push('binary patches are not supported');
+  const changedFiles=[...diff.matchAll(/^\+\+\+ b\/(.+)$/gm)].map(match=>match[1].trim()).filter(file=>file!=='/dev/null');
+  const uniqueFiles=[...new Set(changedFiles)];
+  if(uniqueFiles.length===0)errors.push('patch must identify at least one changed file');
+  if(uniqueFiles.length>maxFiles)errors.push(`patch changes ${uniqueFiles.length} files; maximum is ${maxFiles}`);
+  for(const file of uniqueFiles){
+    if(file.startsWith('/')||file.split('/').includes('..')||file.startsWith('.git/'))errors.push(`unsafe changed file path: ${file}`);
+  }
+  return{valid:errors.length===0,changedFiles:uniqueFiles,errors};
+}

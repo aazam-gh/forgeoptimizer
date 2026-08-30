@@ -27,4 +27,6 @@ describe('end-to-end optimization orchestration',()=>{
     expect(result.validation.state).toBe('FAIL');
     expect(result.validation.reasons).toContain('Candidate scenario failed or timed out');
   });
+
+  it('runs all configured scenarios for baseline and each candidate',async()=>{const second={...scenario,id:'typecheck',name:'typecheck'};const result=await executeOptimizationRun(run,[candidate('a')],{scenario:[scenario,second],baselineCommitSha:'a'.repeat(40),sandbox:{execute:async request=>({scenarioId:request.scenario.id,status:'passed',quality:'MEASURED'})},applyCandidate:async()=>({commitSha:'b'.repeat(40)}),revertCandidate:async()=>{},evaluateCandidate:async()=>[{caseId:'case',baseline:'ok',candidate:'ok',passed:true,confidence:'HIGH',reason:'matched'}]});expect(result.baselineResults).toHaveLength(2);expect(result.candidateResults).toHaveLength(2);});
 });

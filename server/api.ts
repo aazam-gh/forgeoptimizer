@@ -69,6 +69,10 @@ function runRecord(database, id) {
   return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), plan: run.plan_json ? JSON.parse(run.plan_json) : undefined, candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
 }
 
+function runRecords(database) {
+  return database.prepare('SELECT id FROM optimization_runs ORDER BY updated_at DESC LIMIT 100').all().map(row => runRecord(database, row.id));
+}
+
 function createRun(database, input) {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
@@ -118,6 +122,7 @@ async function handleRequest(request, response, next, database) {
   try {
     const segments = pathname.split('/').filter(Boolean);
     if (request.method === 'POST' && segments.length === 2) return json(response, 201, createRun(database, await readBody(request)));
+    if (request.method === 'GET' && segments.length === 2) return json(response, 200, runRecords(database));
     const id = segments[2];
     if (!id) return json(response, 400, { error: 'Run ID is required' });
     if (request.method === 'GET' && segments.length === 3) { const run = runRecord(database, id); return run ? json(response, 200, run) : json(response, 404, { error: 'Run not found' }); }

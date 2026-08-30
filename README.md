@@ -29,7 +29,7 @@ pnpm build
 
 Open the Vite URL and click **Analyze repository**. The default fixture URL is ready to run.
 
-The local development server also exposes a SQLite-backed run API at `/api/runs`. Create a run with `POST /api/runs`, inspect candidates/results with `GET /api/runs/:id/candidates` and `GET /api/runs/:id/results`, start or cancel it with `POST /api/runs/:id/start` and `POST /api/runs/:id/cancel`, submit a plan with `POST /api/runs/:id/plan`, publish with `POST /api/runs/:id/publish`, approve or reject candidates with `POST /api/candidates/:id/approve` and `POST /api/candidates/:id/reject`, and consume persisted agent events from `GET /api/runs/:id/events`. The database is created under `.data/` and is ignored by Git.
+The local development server also exposes a SQLite-backed run API at `/api/runs`. Create a run with `POST /api/runs`, inspect candidates/results with `GET /api/runs/:id/candidates` and `GET /api/runs/:id/results`, start or cancel it with `POST /api/runs/:id/start` and `POST /api/runs/:id/cancel`, submit a plan with `POST /api/runs/:id/plan`, append events with `POST /api/runs/:id/events`, approve with `POST /api/runs/:id/approve`, publish with `POST /api/runs/:id/publish`, approve or reject candidates with `POST /api/candidates/:id/approve` and `POST /api/candidates/:id/reject`, and consume persisted agent events from `GET /api/runs/:id/events`. The database is created under `.data/` and is ignored by Git.
 
 ## TrueForge
 
@@ -49,8 +49,4 @@ Project Skills live under `skills/` and are designed for on-demand loading: repo
 
 ## Current limitations
 
-The V1 UI is a working local vertical slice, while arbitrary GitHub cloning, durable SQLite persistence, real sandbox execution, runtime instrumentation, and the exact installed TrueForge SDK session calls still need to be wired after validating the local TrueForge server/API version. No repository code is executed on the host, and no patch is merged automatically.
-
-## V2
-
-Add a small server-side run store, sandbox provider adapter, GitHub MCP repository import, real TrueForge session streaming, AST analyzers for TypeScript/Python, patch application and rollback, and measured baseline/after benchmarks.
+The local V2 foundation now includes durable run snapshots, lifecycle/approval guards, TrueForge session streaming, provider-neutral instrumentation, cross-call analysis, validated sandbox contracts, and a bounded reversible optimization loop. The default demo remains deterministic unless the same-origin TrueForge proxy is enabled. Private GitHub OAuth/MCP authorization, remote patch/branch/PR creation, live provider SDK hooks, and full repository AST execution still require configured external integrations. No repository code is executed on the host, and no patch is merged automatically.

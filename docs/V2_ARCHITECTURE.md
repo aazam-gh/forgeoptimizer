@@ -26,12 +26,15 @@ there is no automatic merge or default-branch push.
 
 ## Explicitly not verified yet
 
-This repository still needs a server-side store/migrations, GitHub OAuth and
-private-repository MCP authorization, sandbox process execution, real runtime
-hooks for OpenAI/Anthropic/Gemini/framework adapters, and a UI/API that drives
-the new records end to end. Those require credentials and provider contracts;
-the current V2 foundation exposes the interfaces without claiming those
-external integrations are live.
+The local server-side store and migrations, run lifecycle/approval guards,
+TrueForge session streaming, provider-neutral instrumentation contracts,
+cross-call analysis, bounded optimization loop, and sandbox executor boundary
+are implemented and covered by local tests. The default fixture remains
+deterministic unless the same-origin proxy is enabled. Private GitHub OAuth and
+repository MCP authorization, remote patch/branch/PR creation, live provider
+SDK/framework hooks, and full remote sandbox scenario evidence still require
+configured external integrations; unavailable remote execution is reported as
+`NOT_VERIFIED`, never as a host-side pass.
 
 ## Local setup
 

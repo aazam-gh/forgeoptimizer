@@ -90,6 +90,14 @@ describe('V2 safety and evidence primitives', () => {
     expect(allowedPlan.steps.some(step => step.candidateId === 'c5')).toBe(true);
   });
 
+  it('enforces explicit prompt and dependency change policies', () => {
+    const result = analyzeFixture();
+    const promptBlocked = buildOptimizationPlan('run-prompt-blocked', [{ ...result.candidates[3], changeType: 'prompt' }], { ...defaultOptimizationPolicy, allowPromptChanges: false });
+    expect(promptBlocked.steps).toHaveLength(0);
+    const dependencyBlocked = buildOptimizationPlan('run-dependency-blocked', [{ ...result.candidates[0], changeType: 'dependency' }], { ...defaultOptimizationPolicy, allowDependencyChanges: false });
+    expect(dependencyBlocked.steps).toHaveLength(0);
+  });
+
   it('fails malformed evaluators safely and enforces medium risk caps', () => {
     const malformed = evaluateCase({ id: 'e2', name: 'bad JSON', input: {}, expected: {}, evaluator: 'json', source: 'generated' }, '{bad', '{also bad');
     expect(malformed.passed).toBe(false);

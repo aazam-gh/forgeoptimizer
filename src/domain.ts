@@ -99,6 +99,7 @@ export interface Run {
   updatedAt?: string;
   stage?: string;
   mode?: RunMode;
+  policy?: OptimizationPolicy;
   failureReason?: string;
   fallbackReason?: string;
   activeCandidateId?: string;

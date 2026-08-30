@@ -1,4 +1,4 @@
-import type { Run, RunStatus } from "./domain";
+import type { OptimizationPolicy, Run, RunStatus } from "./domain";
 
 type PersistedRun = Pick<
   Run,
@@ -31,7 +31,7 @@ type PersistedRun = Pick<
   | "optimizerUsage"
   | "optimizerCost"
   | "projection"
-> & { policy?: unknown };
+> & { policy?: OptimizationPolicy };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
@@ -55,7 +55,7 @@ export function createPersistedRun(
     | "usages"
     | "before"
     | "approvalStatus"
-  > & { policy?: unknown },
+  > & { policy?: OptimizationPolicy },
 ): Promise<PersistedRun> {
   return request<PersistedRun>("/api/runs", {
     method: "POST",
@@ -98,9 +98,7 @@ export function inspectRepositoryCommit(
 export function listPersistedRuns(): Promise<PersistedRun[]> {
   return request<PersistedRun[]>("/api/runs");
 }
-export function getRepositoryHistory(
-  repositoryUrl: string,
-): Promise<{
+export function getRepositoryHistory(repositoryUrl: string): Promise<{
   repositoryUrl: string;
   aiSpend: number;
   aiCalls: number;
@@ -222,9 +220,7 @@ export function createPersistedPullRequest(
     { method: "POST", body: JSON.stringify(input) },
   );
 }
-export function executeCandidate(
-  candidateId: string,
-): Promise<{
+export function executeCandidate(candidateId: string): Promise<{
   runId: string;
   candidate: Run["candidates"][number];
   status: "queued";

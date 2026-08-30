@@ -10,7 +10,7 @@ describe('V2 safety and evidence primitives', () => {
   });
 
   it('requires a capture level and sanitizes successful and failed invocations', async () => {
-    const metadata = { response: { prompt: 'private prompt', authorization: 'Bearer sk-test_123456789012' } };
+    const metadata: Record<string, unknown> = { response: { prompt: 'private prompt', authorization: 'Bearer sk-test_123456789012' } };
     const success = await instrumentInvocation({ provider: 'OpenAI', callSite: { file: 'src/a.ts', line: 4 }, captureLevel: 'redacted', metadata }, async () => 'ok');
     expect(success.invocation.captureLevel).toBe('redacted');
     expect(success.invocation.metadata).toEqual({ response: { prompt: '[REDACTED]', authorization: '[REDACTED]' } });
@@ -21,7 +21,7 @@ describe('V2 safety and evidence primitives', () => {
 
     const localOnly = await instrumentInvocation({ provider: 'OpenAI', callSite: { file: 'src/a.ts', line: 4 }, captureLevel: 'full_local_only', metadata }, async () => 'ok');
     expect(localOnly.invocation.metadata).toEqual({ response: { prompt: 'private prompt', authorization: '[REDACTED]' } });
-    metadata.response.content = 'changed after capture';
+    (metadata.response as Record<string, unknown>).content = 'changed after capture';
     expect(localOnly.invocation.metadata.response).toEqual({ prompt: 'private prompt', authorization: '[REDACTED]' });
 
     const circular: Record<string, unknown> = {};
@@ -40,6 +40,10 @@ describe('V2 safety and evidence primitives', () => {
     expect(localValues.invocation.metadata.set).toEqual(values.set);
     expect(localValues.invocation.metadata.error).toBeInstanceOf(Error);
     expect((localValues.invocation.metadata.error as Error).message).toBe('provider failed');
+    const sensitiveError = new Error('Authorization: Bearer sk-test_123456789012');
+    const sensitive = await instrumentInvocation({ provider: 'OpenAI', callSite: { file: 'src/a.ts', line: 4 }, captureLevel: 'full_local_only', metadata: { map: new Map([['authorization', 'Bearer sk-test_123456789012']]), error: sensitiveError } }, async () => 'ok');
+    expect(sensitive.invocation.metadata.map).toEqual(new Map([['authorization', '[REDACTED]']]));
+    expect((sensitive.invocation.metadata.error as Error).message).toContain('[REDACTED]');
   });
 
   it('evaluates deterministic behavior and preserves baseline commit identity', () => {

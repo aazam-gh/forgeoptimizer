@@ -4,12 +4,14 @@ import { runTrueForgeOrchestrator } from './trueforge';
 
 type RemoteScenarioResult={scenarioId?:unknown;status?:unknown;exitStatus?:unknown;stdout?:unknown;stderr?:unknown;durationMs?:unknown;quality?:unknown};
 
-function normalizeResult(value:RemoteScenarioResult,expectedScenarioId:string,expectedExitStatus:number):ScenarioExecutionResult|undefined {
-  if(value.scenarioId!==expectedScenarioId||!['passed','failed','timed_out','not_verified'].includes(String(value.status)))return undefined;
-  const quality=value.quality==='MEASURED'?'MEASURED':'NOT_VERIFIED';
-  const exitStatus=typeof value.exitStatus==='number'?value.exitStatus:undefined;
-  const status=value.status==='passed'&&exitStatus!==expectedExitStatus?'failed':value.status as ScenarioExecutionResult['status'];
-  return {scenarioId:expectedScenarioId,status,exitStatus,stdout:typeof value.stdout==='string'?value.stdout:undefined,stderr:status==='failed'&&value.status==='passed'?`Expected exit status ${expectedExitStatus}, received ${exitStatus??'none'}`:typeof value.stderr==='string'?value.stderr:undefined,durationMs:typeof value.durationMs==='number'?value.durationMs:undefined,quality};
+function normalizeResult(value:unknown,expectedScenarioId:string,expectedExitStatus:number):ScenarioExecutionResult|undefined {
+  if(!value||typeof value!=='object')return undefined;
+  const remote=value as RemoteScenarioResult;
+  if(remote.scenarioId!==expectedScenarioId||!['passed','failed','timed_out','not_verified'].includes(String(remote.status)))return undefined;
+  const quality=remote.quality==='MEASURED'?'MEASURED':'NOT_VERIFIED';
+  const exitStatus=typeof remote.exitStatus==='number'?remote.exitStatus:undefined;
+  const status=remote.status==='passed'&&exitStatus!==expectedExitStatus?'failed':remote.status as ScenarioExecutionResult['status'];
+  return {scenarioId:expectedScenarioId,status,exitStatus,stdout:typeof remote.stdout==='string'?remote.stdout:undefined,stderr:status==='failed'&&remote.status==='passed'?`Expected exit status ${expectedExitStatus}, received ${exitStatus??'none'}`:typeof remote.stderr==='string'?remote.stderr:undefined,durationMs:typeof remote.durationMs==='number'?remote.durationMs:undefined,quality};
 }
 
 export const trueForgeSandboxExecutor:SandboxExecutor={

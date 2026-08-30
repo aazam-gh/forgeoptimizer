@@ -21,9 +21,9 @@ function cloneMetadata(value:unknown,walk:MetadataWalk={ancestors:new WeakSet(),
  const object=value as object;
  if(memo.has(object))return memo.get(object);
  if(value instanceof Date)return new Date(value.getTime());
- if(value instanceof Map){const result=new Map<unknown,unknown>();memo.set(object,result);value.forEach((item,key)=>result.set(cloneMetadata(key,walk,depth+1,memo),cloneMetadata(item,walk,depth+1,memo)));return result;}
+ if(value instanceof Map){const result=new Map<unknown,unknown>();memo.set(object,result);value.forEach((item,key)=>{const clonedKey=cloneMetadata(key,walk,depth+1,memo);result.set(clonedKey,typeof key==='string'&&credentialField.test(metadataKey(key))?'[REDACTED]':cloneMetadata(item,walk,depth+1,memo));});return result;}
  if(value instanceof Set){const result=new Set<unknown>();memo.set(object,result);value.forEach(item=>result.add(cloneMetadata(item,walk,depth+1,memo)));return result;}
- if(value instanceof Error){const result=new Error(value.message);result.name=value.name;result.stack=value.stack;memo.set(object,result);Object.entries(value).forEach(([key,item])=>Object.assign(result,{[key]:cloneMetadata(item,walk,depth+1,memo)}));return result;}
+ if(value instanceof Error){const result=new Error(redactSecrets(value.message));result.name=value.name;result.stack=value.stack?redactSecrets(value.stack):undefined;memo.set(object,result);Object.entries(value).forEach(([key,item])=>Object.assign(result,{[key]:credentialField.test(metadataKey(key))?'[REDACTED]':cloneMetadata(item,walk,depth+1,memo)}));return result;}
  if(Array.isArray(value)){const result:unknown[]=[];memo.set(object,result);value.forEach(item=>result.push(cloneMetadata(item,walk,depth+1,memo)));return result;}
  const result=Object.create(Object.getPrototypeOf(value)) as Record<string,unknown>;memo.set(object,result);Object.entries(value).forEach(([key,item])=>{result[key]=credentialField.test(metadataKey(key))?'[REDACTED]':cloneMetadata(item,walk,depth+1,memo);});return result;
 }
@@ -36,9 +36,9 @@ function sanitize(value:unknown,walk:MetadataWalk={ancestors:new WeakSet(),nodes
  walk.ancestors.add(object);
  let result:unknown;
  if(value instanceof Date)result=new Date(value.getTime());
- else if(value instanceof Map)result=new Map(Array.from(value.entries(),([key,item])=>[sanitize(key,walk,depth+1),sanitize(item,walk,depth+1)]));
+ else if(value instanceof Map)result=new Map(Array.from(value.entries(),([key,item])=>[sanitize(key,walk,depth+1),typeof key==='string'&&secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)]));
  else if(value instanceof Set)result=new Set(Array.from(value, item=>sanitize(item,walk,depth+1)));
- else if(value instanceof Error){const error=new Error(value.message);error.name=value.name;error.stack=value.stack;Object.entries(value).forEach(([key,item])=>Object.assign(error,{[key]:secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)}));result=error;}
+ else if(value instanceof Error){const error=new Error(redactSecrets(value.message));error.name=value.name;error.stack=value.stack?redactSecrets(value.stack):undefined;Object.entries(value).forEach(([key,item])=>Object.assign(error,{[key]:secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)}));result=error;}
  else if(Array.isArray(value))result=value.map(item=>sanitize(item,walk,depth+1));
  else result=Object.fromEntries(Object.entries(value).map(([key,item])=>[key,secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)]));
  walk.ancestors.delete(object);return result;

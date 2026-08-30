@@ -1,9 +1,10 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { apiPlugin } from './server/api.ts';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
-    plugins: [react()],
+    plugins: [react(), apiPlugin({ trueForgeUrl: env.VITE_TRUEFORGE_URL, trueForgeApiKey: env.TRUEFORGE_API_KEY })],
     server: {
       proxy: {
         '/api/trueforge': {

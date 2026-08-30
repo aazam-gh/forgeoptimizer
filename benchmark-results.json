@@ -1,0 +1,9 @@
+{
+  "fixture": "fixture://inefficient-ai-app",
+  "opportunitiesExpected": 5,
+  "opportunitiesFound": 5,
+  "falsePositiveCandidates": 0,
+  "highConfidenceCandidates": 2,
+  "quality": "DETERMINISTIC_FIXTURE",
+  "generatedBy": "src/benchmark.ts"
+}

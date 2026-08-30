@@ -29,9 +29,13 @@ pnpm build
 
 Open the Vite URL and click **Analyze repository**. The default fixture URL is ready to run.
 
+The local development server also exposes a SQLite-backed run API at `/api/runs`. Create a run with `POST /api/runs`, inspect candidates/results with `GET /api/runs/:id/candidates` and `GET /api/runs/:id/results`, start or cancel it with `POST /api/runs/:id/start` and `POST /api/runs/:id/cancel`, submit a plan with `POST /api/runs/:id/plan`, append events with `POST /api/runs/:id/events`, approve with `POST /api/runs/:id/approve`, publish with `POST /api/runs/:id/publish`, approve or reject candidates with `POST /api/candidates/:id/approve` and `POST /api/candidates/:id/reject`, and consume persisted agent events from `GET /api/runs/:id/events`. The database is created under `.data/` and is ignored by Git.
+
+When configured with a server-only `GITHUB_TOKEN`, the API also exposes explicit GitHub operations: inspect a repository via `POST /api/github/repository`, create a `forgeoptimizer/run-{short-id}` branch via `POST /api/github/branch`, and create a pull request via `POST /api/github/pull-request` with `approved: true` plus complete validation evidence. The browser never receives the token, and the adapter never merges or pushes to the default branch.
+
 ## TrueForge
 
-TrueForge is the intended orchestration runtime for the root Optimization Orchestrator. The browser calls a same-origin proxy in `src/trueforge.ts`; the Vite server keeps `TRUEFORGE_API_KEY` server-side and falls back explicitly to local deterministic analysis when the proxy is unavailable. Start the pinned local server with `npx @truefoundry/trueforge@0.1.4 --port 8790`, then configure `.env` from `.env.example`.
+TrueForge is the intended orchestration runtime for the root Optimization Orchestrator. The browser calls a same-origin proxy in `src/trueforge.ts`; the Vite server keeps `TRUEFORGE_API_KEY` server-side and falls back explicitly to local deterministic analysis when the proxy is unavailable. Start the reviewed, pinned local server with `npx @truefoundry/trueforge@0.1.4 --port 8790`, then configure `.env` from `.env.example`. Version updates are subject to normal dependency review.
 
 Project Skills live under `skills/` and are designed for on-demand loading: repository mapping, LLM audit, deterministic replacement, cost analysis, benchmarking, and review. GitHub MCP is an extension point for public repository access; V1's included fixture keeps the demo safe and repeatable without cloning or executing untrusted code on the host.
 
@@ -47,8 +51,4 @@ Project Skills live under `skills/` and are designed for on-demand loading: repo
 
 ## Current limitations
 
-The V1 UI is a working local vertical slice, while arbitrary GitHub cloning, durable SQLite persistence, real sandbox execution, runtime instrumentation, and the exact installed TrueForge SDK session calls still need to be wired after validating the local TrueForge server/API version. No repository code is executed on the host, and no patch is merged automatically.
-
-## V2
-
-Add a small server-side run store, sandbox provider adapter, GitHub MCP repository import, real TrueForge session streaming, AST analyzers for TypeScript/Python, patch application and rollback, and measured baseline/after benchmarks.
+The local V2 foundation now includes durable run snapshots, lifecycle/approval guards, TrueForge session streaming, provider-neutral instrumentation, cross-call analysis, validated sandbox contracts, a bounded reversible optimization loop, and a repeatable fixture benchmark (`pnpm benchmark`). The default demo remains deterministic unless the same-origin TrueForge proxy is enabled. Private GitHub OAuth/MCP authorization, remote patch/branch/PR creation, live provider SDK hooks, and full repository AST execution still require configured external integrations. No repository code is executed on the host, and no patch is merged automatically.

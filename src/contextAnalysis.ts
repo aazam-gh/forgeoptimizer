@@ -1,0 +1,5 @@
+export type ContextBreakdownInput={systemTokens:number;conversationTokens:number;retrievedTokens:number;userTokens:number;potentialRemovableTokens?:number};
+export type ContextBreakdown={totalTokens:number;shares:{system:number;conversation:number;retrieved:number;user:number};retrievalDominates:boolean;potentialRemovableTokens:number;quality:'MEASURED'|'NOT_VERIFIED'};
+
+function nonNegative(value:number):number{return Number.isFinite(value)?Math.max(0,value):0;}
+export function analyzeContextBreakdown(input:ContextBreakdownInput):ContextBreakdown{const system=nonNegative(input.systemTokens);const conversation=nonNegative(input.conversationTokens);const retrieved=nonNegative(input.retrievedTokens);const user=nonNegative(input.userTokens);const total=system+conversation+retrieved+user;return{totalTokens:total,shares:{system:total?system/total:0,conversation:total?conversation/total:0,retrieved:total?retrieved/total:0,user:total?user/total:0},retrievalDominates:retrieved>0&&retrieved>=total*.5,potentialRemovableTokens:Math.min(retrieved,nonNegative(input.potentialRemovableTokens??0)),quality:input.potentialRemovableTokens===undefined?'NOT_VERIFIED':'MEASURED'};}

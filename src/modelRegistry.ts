@@ -1,0 +1,13 @@
+import type { MetricQuality } from './domain';
+
+export interface ModelProfile { id:string; provider:string; contextSize:number; inputCostPerMillion:number; outputCostPerMillion:number; reasoningTier:'standard'|'reasoning'; structuredOutput:boolean; tools:boolean; multimodal:boolean; latencyClass:'low'|'medium'|'high'; quality:MetricQuality; }
+
+export const modelRegistry:readonly ModelProfile[]=[
+  {id:'openai/gpt-4.1',provider:'OpenAI',contextSize:1048576,inputCostPerMillion:2,outputCostPerMillion:8,reasoningTier:'standard',structuredOutput:true,tools:true,multimodal:true,latencyClass:'medium',quality:'ESTIMATED'},
+  {id:'google/gemini-2.5-flash',provider:'Google',contextSize:1048576,inputCostPerMillion:.3,outputCostPerMillion:2.5,reasoningTier:'standard',structuredOutput:true,tools:true,multimodal:true,latencyClass:'low',quality:'ESTIMATED'},
+  {id:'anthropic/claude-sonnet-4',provider:'Anthropic',contextSize:200000,inputCostPerMillion:3,outputCostPerMillion:15,reasoningTier:'reasoning',structuredOutput:true,tools:true,multimodal:true,latencyClass:'high',quality:'ESTIMATED'},
+];
+
+export function getModelProfile(model:string):ModelProfile|undefined{return modelRegistry.find(profile=>profile.id.toLowerCase()===model.trim().toLowerCase());}
+export function findCheaperModels(model:string):ModelProfile[]{const current=getModelProfile(model);if(!current)return[];return modelRegistry.filter(profile=>profile.inputCostPerMillion<current.inputCostPerMillion&&profile.outputCostPerMillion<current.outputCostPerMillion&&profile.contextSize>=current.contextSize);}
+export function recommendModel(currentModel:string,requirements:{structuredOutput?:boolean;tools?:boolean;multimodal?:boolean;reasoningTier?:ModelProfile['reasoningTier'];maxLatency?:ModelProfile['latencyClass']}={}):ModelProfile|undefined{const current=getModelProfile(currentModel);if(!current)return undefined;const rank=(profile:ModelProfile)=>profile.inputCostPerMillion+profile.outputCostPerMillion+(profile.latencyClass==='high'?2:profile.latencyClass==='medium'?1:0);return findCheaperModels(currentModel).filter(profile=>(requirements.structuredOutput===undefined||profile.structuredOutput===requirements.structuredOutput)&&(requirements.tools===undefined||profile.tools===requirements.tools)&&(requirements.multimodal===undefined||profile.multimodal===requirements.multimodal)&&(requirements.reasoningTier===undefined||profile.reasoningTier===requirements.reasoningTier)&&(requirements.maxLatency===undefined||(['low','medium','high'].indexOf(profile.latencyClass)<=['low','medium','high'].indexOf(requirements.maxLatency)))).sort((a,b)=>rank(a)-rank(b))[0];}

@@ -1,8 +1,7 @@
-node_modules
-dist
+node_modules/
+dist/
+.data/
 .env
-*.db
-.DS_Store
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts

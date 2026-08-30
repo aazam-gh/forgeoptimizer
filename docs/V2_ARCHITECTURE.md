@@ -26,17 +26,22 @@ there is no automatic merge or default-branch push.
 
 ## Explicitly not verified yet
 
-This repository still needs a server-side store/migrations, GitHub OAuth and
-private-repository MCP authorization, sandbox process execution, real runtime
-hooks for OpenAI/Anthropic/Gemini/framework adapters, and a UI/API that drives
-the new records end to end. Those require credentials and provider contracts;
-the current V2 foundation exposes the interfaces without claiming those
-external integrations are live.
+The local server-side store and migrations, run lifecycle/approval guards,
+TrueForge session streaming, provider-neutral instrumentation contracts,
+cross-call analysis, bounded optimization loop, and sandbox executor boundary
+are implemented and covered by local tests. The default fixture remains
+deterministic unless the same-origin proxy is enabled. Private GitHub OAuth and
+repository MCP authorization, remote patch/branch/PR creation, live provider
+SDK/framework hooks, and full remote sandbox scenario evidence still require
+configured external integrations; unavailable remote execution is reported as
+`NOT_VERIFIED`, never as a host-side pass.
 
 ## Local setup
 
-1. Run `npx @truefoundry/trueforge@0.1.4 --port 8790`.
+1. Run the reviewed, pinned CLI: `npx @truefoundry/trueforge@0.1.4 --port 8790`. Update this version only through normal dependency review.
 2. Copy `.env.example` to `.env`.
 3. Keep `TRUEFORGE_API_KEY` server-only; set `VITE_TRUEFORGE_PROXY_ENABLED=true` to enable the proxy path.
 4. Run `pnpm dev` and open `http://localhost:5188`.
 5. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm lint`.
+
+The V2 development server includes a local SQLite run store at `.data/forgeoptimizer.sqlite`. Its API boundary includes run creation, lifecycle, candidate, plan, result, approval, publish, and event endpoints under `/api/runs` and `/api/candidates`. This persists safe orchestration state and agent events; target repositories are not executed by this host-side API.

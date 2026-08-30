@@ -1,0 +1,9 @@
+{
+  "name": "forgeoptimizer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {"dev":"vite","build":"tsc -b && vite build","test":"vitest run","lint":"eslint .","typecheck":"tsc -b --pretty false"},
+  "dependencies": {"@truefoundry/trueforge-sdk":"latest","@vitejs/plugin-react":"latest","lucide-react":"latest","react":"latest","react-dom":"latest","zod":"latest"},
+  "devDependencies": {"@types/react":"latest","@types/react-dom":"latest","@typescript-eslint/eslint-plugin":"latest","@typescript-eslint/parser":"latest","eslint":"latest","typescript":"5.9.3","vite":"latest","vitest":"latest"}
+}

@@ -490,6 +490,36 @@ function updateRun(database, id, patch) {
     });
   return runRecord(database, id);
 }
+function respondWithUpdatedRun(response, database, id, patch) {
+  const updated = updateRun(database, id, patch);
+  return updated
+    ? json(response, 200, updated)
+    : json(response, 404, { error: "Run not found" });
+}
+function authorizeGithubInspection(request, response) {
+  const configured = process.env.FORGEOPTIMIZER_API_TOKEN;
+  if (configured) {
+    const authorization = request.headers.authorization ?? "";
+    if (authorization !== `Bearer ${configured}`) {
+      json(response, 401, {
+        error: "ForgeOptimizer authorization is required",
+      });
+      return false;
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    json(response, 503, {
+      error: "FORGEOPTIMIZER_API_TOKEN must be configured",
+    });
+    return false;
+  }
+  const origin = request.headers.origin;
+  const host = request.headers.host;
+  if (origin && host && !origin.endsWith(`://${host}`)) {
+    json(response, 403, { error: "Cross-origin GitHub access is not allowed" });
+    return false;
+  }
+  return true;
+}
 
 function updateCandidates(database, candidateId, accepted) {
   const runs = database
@@ -724,6 +754,7 @@ async function handleRequest(request, response, next, database, config = {}) {
       return json(response, 200, repositories);
     }
     if (request.method === "POST" && pathname === "/api/github/repository") {
+      if (!authorizeGithubInspection(request, response)) return;
       const body = await readBody(request);
       return json(
         response,
@@ -732,12 +763,14 @@ async function handleRequest(request, response, next, database, config = {}) {
       );
     }
     if (request.method === "POST" && pathname === "/api/github/branches") {
+      if (!authorizeGithubInspection(request, response)) return;
       const body = await readBody(request);
       return json(response, 200, {
         branches: await listRepositoryBranches(body.repositoryUrl),
       });
     }
     if (request.method === "POST" && pathname === "/api/github/commit") {
+      if (!authorizeGithubInspection(request, response)) return;
       const body = await readBody(request);
       return json(
         response,
@@ -746,6 +779,7 @@ async function handleRequest(request, response, next, database, config = {}) {
       );
     }
     if (request.method === "POST" && pathname === "/api/github/source") {
+      if (!authorizeGithubInspection(request, response)) return;
       const body = await readBody(request);
       return json(response, 200, {
         files: await readRepositorySource(
@@ -931,26 +965,20 @@ async function handleRequest(request, response, next, database, config = {}) {
       const body = await readBody(request);
       if (!body.status)
         return json(response, 400, { error: "Run status is required" });
-      return json(response, 200, updateRun(database, id, body));
+      return respondWithUpdatedRun(response, database, id, body);
     }
     if (request.method === "POST" && segments[3] === "start")
-      return json(
-        response,
-        200,
-        updateRun(database, id, { status: "preparing" }),
-      );
+      return respondWithUpdatedRun(response, database, id, {
+        status: "preparing",
+      });
     if (request.method === "POST" && segments[3] === "cancel")
-      return json(
-        response,
-        200,
-        updateRun(database, id, { status: "cancelled" }),
-      );
+      return respondWithUpdatedRun(response, database, id, {
+        status: "cancelled",
+      });
     if (request.method === "POST" && segments[3] === "complete")
-      return json(
-        response,
-        200,
-        updateRun(database, id, { status: "completed" }),
-      );
+      return respondWithUpdatedRun(response, database, id, {
+        status: "completed",
+      });
     if (request.method === "POST" && segments[3] === "approve") {
       const run = runRecord(database, id);
       if (!run) return json(response, 404, { error: "Run not found" });

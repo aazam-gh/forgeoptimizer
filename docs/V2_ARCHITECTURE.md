@@ -47,4 +47,9 @@ execution is reported as `NOT_VERIFIED`, never as a host-side pass.
 4. Run `pnpm dev` and open `http://localhost:5188`.
 5. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm lint`.
 
+For production GitHub inspection, configure both the server-only `GITHUB_TOKEN`
+and `FORGEOPTIMIZER_API_TOKEN`; the deployment gateway or authenticated client
+must send the latter as a bearer token. The browser never receives the GitHub
+token.
+
 The V2 development server includes a local SQLite run store at `.data/forgeoptimizer.sqlite`. Its API boundary includes run creation, lifecycle, candidate, plan, result, approval, publish, and event endpoints under `/api/runs` and `/api/candidates`. This persists safe orchestration state and agent events; target repositories are not executed by this host-side API.

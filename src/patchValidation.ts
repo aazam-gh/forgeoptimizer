@@ -17,9 +17,9 @@ export function validateCandidatePatch(
     };
   if (diff.includes("GIT binary patch"))
     errors.push("binary patches are not supported");
-  const changedFiles = [...diff.matchAll(/^\+\+\+ b\/(.+)$/gm)]
-    .map((match) => match[1].trim())
-    .filter((file) => file !== "/dev/null");
+  const changedFiles = [
+    ...diff.matchAll(/^(?:\+\+\+ b\/([^\n]+)|--- a\/([^\n]+))$/gm),
+  ].map((match) => (match[1] ?? match[2]).trim());
   const uniqueFiles = [...new Set(changedFiles)];
   if (uniqueFiles.length === 0)
     errors.push("patch must identify at least one changed file");

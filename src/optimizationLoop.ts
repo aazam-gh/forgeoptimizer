@@ -33,6 +33,7 @@ export async function runOptimizationLoop(
   candidates: Candidate[],
   execute: CandidateExecutor,
   budget: OptimizationBudget = defaultOptimizationBudget,
+  sandboxExecutionsPerCandidate = 1,
 ): Promise<OptimizationLoopResult> {
   const byId = new Map(
     candidates.map((candidate) => [candidate.id, candidate]),
@@ -78,7 +79,7 @@ export async function runOptimizationLoop(
     if (
       !canSpend(budget, ledger, {
         candidates: 1,
-        sandboxExecutions: 1,
+        sandboxExecutions: sandboxExecutionsPerCandidate,
         runtimeMs: Math.max(0, elapsed - ledger.runtimeMs),
       })
     ) {
@@ -100,7 +101,8 @@ export async function runOptimizationLoop(
       ledger = {
         ...ledger,
         candidates: ledger.candidates + 1,
-        sandboxExecutions: ledger.sandboxExecutions + 1,
+        sandboxExecutions:
+          ledger.sandboxExecutions + sandboxExecutionsPerCandidate,
         runtimeMs: Date.now() - started,
       };
       const overRuntimeBudget = ledger.runtimeMs > budget.maxRuntimeMs;
@@ -131,7 +133,8 @@ export async function runOptimizationLoop(
       ledger = {
         ...ledger,
         candidates: ledger.candidates + 1,
-        sandboxExecutions: ledger.sandboxExecutions + 1,
+        sandboxExecutions:
+          ledger.sandboxExecutions + sandboxExecutionsPerCandidate,
         runtimeMs: Date.now() - started,
       };
       step.status = "reverted";

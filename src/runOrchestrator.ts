@@ -144,6 +144,7 @@ export async function executeOptimizationRun(
           };
         },
         budget,
+        scenarios.length,
       )
     : {
         plan,

@@ -52,6 +52,12 @@ export type TrueForgeRunResult = {
   retryCount?: number;
   usage?: RunMetrics;
 };
+function safeErrorDetail(error: unknown): string {
+  return String(error instanceof Error ? error.message : error)
+    .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, "[REDACTED]")
+    .replace(/(?:sk|gh[pousr]|AIza)[A-Za-z0-9_-]{8,}/gi, "[REDACTED]")
+    .slice(0, 500);
+}
 
 async function trueForgeFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${trueForgeConfig.proxyPath}${path}`, {
@@ -426,13 +432,13 @@ export async function runTrueForgeOrchestrator(
         }),
       options.maxRetries ?? 2,
       controller.signal,
-      (attempt, _error) => {
+      (attempt, error) => {
         retryCount = attempt;
         onEvent({
           id: `tf-retry-${attempt}`,
           label: "TrueForge retry",
           status: "active",
-          detail: `Retrying session request (attempt ${attempt + 1})`,
+          detail: `Retrying session request (attempt ${attempt + 1}): ${safeErrorDetail(error)}`,
         });
       },
     );

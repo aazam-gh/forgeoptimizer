@@ -15,6 +15,16 @@ function openDatabase() {
   const database = new DatabaseSync(databasePath);
   database.exec(`
     PRAGMA journal_mode = WAL;
+    CREATE TABLE IF NOT EXISTS repositories (
+      id TEXT PRIMARY KEY,
+      url TEXT NOT NULL UNIQUE,
+      owner TEXT,
+      name TEXT,
+      default_branch TEXT,
+      last_analyzed_commit TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS optimization_runs (
       id TEXT PRIMARY KEY,
       repository_url TEXT NOT NULL,
@@ -107,7 +117,11 @@ function createRun(database, input) {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
   if (input.id && database.prepare('SELECT id FROM optimization_runs WHERE id = ?').get(input.id)) return runRecord(database, input.id);
-  database.prepare('INSERT INTO optimization_runs (id, repository_url, source_branch, source_commit_sha, requests_per_day, scenarios_json, status, mode, policy_json, candidates_json, usages_json, before_json, approval_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, input.repositoryUrl ?? 'fixture://inefficient-ai-app', input.sourceBranch ?? null, input.sourceCommitSha ?? null, input.requestsPerDay ?? null, JSON.stringify(input.scenarios ?? []), 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), JSON.stringify(input.usages ?? []), JSON.stringify(input.before ?? {}), input.approvalStatus ?? 'pending', now, now);
+  const repositoryUrl = input.repositoryUrl ?? 'fixture://inefficient-ai-app';
+  let owner = null; let name = null;
+  try { const parsed = new URL(repositoryUrl); if (parsed.hostname === 'github.com') { [owner, name] = parsed.pathname.split('/').filter(Boolean); name = name?.replace(/\.git$/, '') ?? null; } } catch { /* fixture URLs have no repository identity */ }
+  database.prepare('INSERT INTO repositories (id, url, owner, name, default_branch, last_analyzed_commit, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(url) DO UPDATE SET default_branch = excluded.default_branch, last_analyzed_commit = excluded.last_analyzed_commit, updated_at = excluded.updated_at').run(randomUUID(), repositoryUrl, owner, name, input.sourceBranch ?? null, input.sourceCommitSha ?? null, now, now);
+  database.prepare('INSERT INTO optimization_runs (id, repository_url, source_branch, source_commit_sha, requests_per_day, scenarios_json, status, mode, policy_json, candidates_json, usages_json, before_json, approval_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, repositoryUrl, input.sourceBranch ?? null, input.sourceCommitSha ?? null, input.requestsPerDay ?? null, JSON.stringify(input.scenarios ?? []), 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), JSON.stringify(input.usages ?? []), JSON.stringify(input.before ?? {}), input.approvalStatus ?? 'pending', now, now);
   return runRecord(database, id);
 }
 
@@ -201,6 +215,7 @@ async function handleRequest(request, response, next, database, config = {}) {
   try {
     const segments = pathname.split('/').filter(Boolean);
     if (request.method === 'GET' && pathname === '/api/repositories/history') { const repositoryUrl = new URL(request.url ?? '/', 'http://localhost').searchParams.get('repositoryUrl'); if (!repositoryUrl) return json(response, 400, { error: 'repositoryUrl is required' }); const runs = runRecords(database).filter(run => run.repositoryUrl === repositoryUrl); const latest = runs[0]; const beforeCost = runs.reduce((sum, run) => sum + (run.before?.cost ?? 0), 0); const afterCost = runs.reduce((sum, run) => sum + (run.after?.cost ?? run.before?.cost ?? 0), 0); return json(response, 200, { repositoryUrl, aiSpend: beforeCost, aiCalls: runs.reduce((sum, run) => sum + (run.before?.calls ?? 0), 0), savingsDiscovered: Math.max(0, beforeCost - afterCost), latestOptimizedCommit: latest?.branch?.resultingCommitSha, runs }); }
+    if (request.method === 'GET' && pathname === '/api/repositories') { const repositories = database.prepare('SELECT id, url, owner, name, default_branch AS defaultBranch, last_analyzed_commit AS lastAnalyzedCommit, created_at AS createdAt, updated_at AS updatedAt FROM repositories ORDER BY updated_at DESC').all(); return json(response, 200, repositories); }
     if (request.method === 'POST' && pathname === '/api/github/repository') { const body = await readBody(request); return json(response, 200, await inspectRepository(body.repositoryUrl, body.branch)); }
     if (request.method === 'POST' && pathname === '/api/github/branches') { const body = await readBody(request); return json(response, 200, { branches: await listRepositoryBranches(body.repositoryUrl) }); }
     if (request.method === 'POST' && pathname === '/api/github/commit') { const body = await readBody(request); return json(response, 200, await inspectCommit(body.repositoryUrl, body.commitSha)); }

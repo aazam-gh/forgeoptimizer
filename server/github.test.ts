@@ -19,6 +19,15 @@ describe('server-side GitHub workflow',()=>{
     await expect(createOptimizationBranch('https://github.com/acme/app','main','main')).rejects.toThrow('Optimization branch');
   });
 
+  it('creates the optimization branch from the selected exact commit',async()=>{
+    process.env.GITHUB_TOKEN='server-secret';
+    const selected='c'.repeat(40);
+    const fetchMock=vi.fn().mockResolvedValueOnce(Response.json({default_branch:'main',private:false})).mockResolvedValueOnce(Response.json({object:{sha:'tip'.repeat(10)}})).mockResolvedValueOnce(Response.json({sha:selected})).mockResolvedValueOnce(Response.json({}));
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(createOptimizationBranch('https://github.com/acme/app','main','forgeoptimizer/run-abcd',selected)).resolves.toMatchObject({baseCommitSha:selected});
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({sha:selected});
+  });
+
   it('creates a pull request only through the explicit adapter call',async()=>{
     process.env.GITHUB_TOKEN='server-secret';
     const fetchMock=vi.fn().mockResolvedValueOnce(Response.json({number:4,html_url:'https://github.com/acme/app/pull/4',head:{ref:'forgeoptimizer/run-abcd'},base:{ref:'main'}}));

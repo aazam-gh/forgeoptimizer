@@ -8,4 +8,5 @@ describe('full validation gate',()=>{
   it('preserves equal baseline failures but blocks regressions',()=>expect(assessValidationGate({...passing,baseline:{testsPassed:9,testsFailed:1},candidate:{testsPassed:9,testsFailed:1}})).toMatchObject({state:'PASS',canPublish:true}));
   it('reports missing evidence as NOT_VERIFIED',()=>expect(assessValidationGate({...passing,build:undefined})).toMatchObject({state:'NOT_VERIFIED',canPublish:false}));
   it('blocks a candidate with additional failures',()=>expect(assessValidationGate({...passing,baseline:{testsPassed:10,testsFailed:1},candidate:{testsPassed:9,testsFailed:2}})).toMatchObject({state:'FAIL',canPublish:false}));
+  it('fails when the measured candidate scenario fails',()=>expect(assessValidationGate({...passing,scenario:{scenarioId:'tests',status:'failed',quality:'MEASURED'}})).toMatchObject({state:'FAIL',canPublish:false,reasons:expect.arrayContaining(['Candidate scenario failed or timed out'])}));
 });

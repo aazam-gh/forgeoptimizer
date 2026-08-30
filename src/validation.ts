@@ -11,8 +11,9 @@ export function assessValidationGate(input:ValidationGateInput):ValidationGateRe
   if(input.baseline.testsFailed>0)reasons.push('Baseline has documented failures');
   checks.regression=input.candidate.testsFailed<=input.baseline.testsFailed&&input.candidate.testsPassed>=input.baseline.testsPassed?'PASS':'FAIL';
   if(checks.regression==='FAIL')reasons.push('Candidate regressed compared with the exact baseline');
-  checks.scenario=input.scenario?.quality==='MEASURED'&&input.scenario.status==='passed'?'PASS':'NOT_VERIFIED';
-  if(checks.scenario!=='PASS')reasons.push('Scenario execution is not measured and passing');
+  checks.scenario=input.scenario?.quality==='MEASURED'&&input.scenario.status==='passed'?'PASS':input.scenario?.status==='failed'||input.scenario?.status==='timed_out'?'FAIL':'NOT_VERIFIED';
+  if(checks.scenario==='FAIL')reasons.push('Candidate scenario failed or timed out');
+  else if(checks.scenario!=='PASS')reasons.push('Scenario execution is not measured and passing');
   checks.evaluations=input.evaluations&&input.evaluations.length>0?(input.evaluations.every(result=>result.passed)?'PASS':'FAIL'):'NOT_VERIFIED';
   if(checks.evaluations!=='PASS')reasons.push('Behavioral evaluation evidence is incomplete or failing');
   checks.typecheck=input.typecheck===undefined?'NOT_VERIFIED':input.typecheck?'PASS':'FAIL';

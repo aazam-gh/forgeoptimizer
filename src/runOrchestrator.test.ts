@@ -10,7 +10,7 @@ describe('end-to-end optimization orchestration',()=>{
   it('runs baseline, applies candidates one at a time, and reverts a failing candidate',async()=>{
     const applied:string[]=[];const reverted:string[]=[];let calls=0;
     const result=await executeOptimizationRun(run,[candidate('a'),candidate('b')],{scenario,baselineCommitSha:'a'.repeat(40),sandbox:{execute:async request=>({scenarioId:request.scenario.id,status:request.commitSha==='c'.repeat(40)?'failed':'passed',quality:'MEASURED'})},applyCandidate:async current=>{applied.push(current.id);return{commitSha:current.id==='a'?'b'.repeat(40):'c'.repeat(40)};},revertCandidate:async current=>{reverted.push(current.id);},evaluateCandidate:async()=>{calls+=1;return[];}});
-    expect(applied).toEqual(['a','b']);expect(reverted).toEqual(['b']);expect(result.workflow.commits.map(commit=>commit.status)).toEqual(['applied','reverted']);expect(result.run.status).toBe('awaiting_approval');expect(calls).toBe(2);
+    expect(applied).toEqual(['a','b']);expect(reverted).toEqual(['b']);expect(result.workflow.commits.map(commit=>commit.status)).toEqual(['applied','reverted']);expect(result.run.status).toBe('fallback');expect(result.validation.reasons).toContain('Candidate scenario failed or timed out');expect(calls).toBe(2);
   });
 
   it('gates model-change candidates on measured benchmark evidence',async()=>{
@@ -20,5 +20,11 @@ describe('end-to-end optimization orchestration',()=>{
     expect(applied).toEqual([]);
     expect(result.workflow.commits).toEqual([]);
     expect(result.validation.reasons).toEqual(expect.arrayContaining(['Behavioral evaluation evidence is incomplete or failing']));
+  });
+
+  it('uses the latest candidate scenario for the final validation gate',async()=>{
+    const result=await executeOptimizationRun(run,[candidate('bad')],{scenario,baselineCommitSha:'a'.repeat(40),sandbox:{execute:async request=>({scenarioId:request.scenario.id,status:request.commitSha==='b'.repeat(40)?'failed':'passed',quality:'MEASURED'})},applyCandidate:async()=>({commitSha:'b'.repeat(40)}),revertCandidate:async()=>{},evaluateCandidate:async()=>[{caseId:'case',baseline:'ok',candidate:'ok',passed:true,confidence:'HIGH',reason:'matched'}]});
+    expect(result.validation.state).toBe('FAIL');
+    expect(result.validation.reasons).toContain('Candidate scenario failed or timed out');
   });
 });

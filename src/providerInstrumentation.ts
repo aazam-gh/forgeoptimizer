@@ -9,3 +9,7 @@ export async function instrumentProviderCall<T extends ProviderResponse>(input:P
 export const instrumentOpenAI=(input:Omit<ProviderCallInput,'provider'>,operation:()=>Promise<ProviderResponse>)=>instrumentProviderCall({...input,provider:'OpenAI'},operation);
 export const instrumentAnthropic=(input:Omit<ProviderCallInput,'provider'>,operation:()=>Promise<ProviderResponse>)=>instrumentProviderCall({...input,provider:'Anthropic'},operation);
 export const instrumentGemini=(input:Omit<ProviderCallInput,'provider'>,operation:()=>Promise<ProviderResponse>)=>instrumentProviderCall({...input,provider:'Google'},operation);
+export const instrumentVercelAI=(input:Omit<ProviderCallInput,'provider'>,operation:()=>Promise<ProviderResponse>)=>instrumentProviderCall({...input,provider:'Vercel AI SDK'},operation);
+export const instrumentLangChainJS=(input:Omit<ProviderCallInput,'provider'>,operation:()=>Promise<ProviderResponse>)=>instrumentProviderCall({...input,provider:'LangChain JS'},operation);
+export const instrumentLangChainPython=(input:Omit<ProviderCallInput,'provider'>,operation:()=>Promise<ProviderResponse>)=>instrumentProviderCall({...input,provider:'LangChain Python'},operation);
+export const instrumentLlamaIndex=(input:Omit<ProviderCallInput,'provider'>,operation:()=>Promise<ProviderResponse>)=>instrumentProviderCall({...input,provider:'LlamaIndex'},operation);

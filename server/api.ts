@@ -150,6 +150,15 @@ function updateCandidates(database, candidateId, accepted) {
   return null;
 }
 
+function findCandidate(database, candidateId) {
+  const runs = database.prepare('SELECT id, candidates_json FROM optimization_runs').all();
+  for (const run of runs) {
+    const candidate = JSON.parse(run.candidates_json).find(candidate => candidate.id === candidateId);
+    if (candidate) return { runId: run.id, candidate };
+  }
+  return null;
+}
+
 function apiPlugin() {
   const database = openDatabase();
   return {
@@ -167,6 +176,15 @@ async function handleRequest(request, response, next, database) {
     if (request.method === 'POST' && pathname === '/api/github/repository') { const body = await readBody(request); return json(response, 200, await inspectRepository(body.repositoryUrl, body.branch)); }
     if (request.method === 'POST' && pathname === '/api/github/branch') { const body = await readBody(request); return json(response, 201, await createOptimizationBranch(body.repositoryUrl, body.baseBranch, body.branchName)); }
     if (request.method === 'POST' && pathname === '/api/github/pull-request') { const body = await readBody(request); if (body.approved !== true) return json(response, 409, { error: 'Explicit approval is required before creating a pull request' }); if (!body.validation) return json(response, 409, { error: 'Validation gate is not complete' }); const validation = assessValidationGate(body.validation); if (!validation.canPublish) return json(response, 409, { error: 'Validation gate is not complete', validation }); const reportBody = body.body ?? (body.report ? buildOptimizationReport({ ...body.report, validation }) : undefined); if (!reportBody) return json(response, 400, { error: 'Evidence-backed report body is required' }); return json(response, 201, await createPullRequest(body.repositoryUrl, body.head, body.base, body.title, reportBody)); }
+    if (segments[1] === 'candidates') {
+      const candidateRecord = findCandidate(database, segments[2]);
+      if (!candidateRecord) return json(response, 404, { error: 'Candidate not found' });
+      if (request.method === 'GET' && segments[3] === 'diff') return json(response, 200, { candidate: candidateRecord.candidate.id, runId: candidateRecord.runId, diff: candidateRecord.candidate.diff ?? '' });
+      if (request.method === 'POST' && segments[3] === 'execute') {
+        appendEvent(database, candidateRecord.runId, { id: `candidate-${candidateRecord.candidate.id}-execute`, label: 'Candidate execution', status: 'active', detail: `Execution requested for ${candidateRecord.candidate.title}` });
+        return json(response, 202, { runId: candidateRecord.runId, candidate: candidateRecord.candidate, status: 'queued' });
+      }
+    }
     if (request.method === 'POST' && segments.length === 2) return json(response, 201, createRun(database, await readBody(request)));
     if (request.method === 'GET' && segments.length === 2) return json(response, 200, runRecords(database));
     const id = segments[2];

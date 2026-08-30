@@ -174,9 +174,10 @@ function apiPlugin() {
 
 async function handleRequest(request, response, next, database) {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
-  if (!pathname.startsWith('/api/runs') && !pathname.startsWith('/api/candidates') && !pathname.startsWith('/api/github')) return next();
+  if (!pathname.startsWith('/api/runs') && !pathname.startsWith('/api/candidates') && !pathname.startsWith('/api/github') && !pathname.startsWith('/api/repositories')) return next();
   try {
     const segments = pathname.split('/').filter(Boolean);
+    if (request.method === 'GET' && pathname === '/api/repositories/history') { const repositoryUrl = new URL(request.url ?? '/', 'http://localhost').searchParams.get('repositoryUrl'); if (!repositoryUrl) return json(response, 400, { error: 'repositoryUrl is required' }); const runs = runRecords(database).filter(run => run.repositoryUrl === repositoryUrl); const latest = runs[0]; const beforeCost = runs.reduce((sum, run) => sum + (run.before?.cost ?? 0), 0); const afterCost = runs.reduce((sum, run) => sum + (run.after?.cost ?? run.before?.cost ?? 0), 0); return json(response, 200, { repositoryUrl, aiSpend: beforeCost, aiCalls: runs.reduce((sum, run) => sum + (run.before?.calls ?? 0), 0), savingsDiscovered: Math.max(0, beforeCost - afterCost), latestOptimizedCommit: latest?.branch?.resultingCommitSha, runs }); }
     if (request.method === 'POST' && pathname === '/api/github/repository') { const body = await readBody(request); return json(response, 200, await inspectRepository(body.repositoryUrl, body.branch)); }
     if (request.method === 'POST' && pathname === '/api/github/branches') { const body = await readBody(request); return json(response, 200, { branches: await listRepositoryBranches(body.repositoryUrl) }); }
     if (request.method === 'POST' && pathname === '/api/github/commit') { const body = await readBody(request); return json(response, 200, await inspectCommit(body.repositoryUrl, body.commitSha)); }

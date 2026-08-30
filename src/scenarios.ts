@@ -1,4 +1,4 @@
-import type { OptimizationScenario, ScenarioExecutionResult } from './domain';
+import type { OptimizationScenario, ScenarioExecutionResult } from './domain.ts';
 
 export type SandboxExecutionRequest={scenario:OptimizationScenario;commitSha:string;repositoryUrl:string};
 export type SandboxExecutor={execute(request:SandboxExecutionRequest):Promise<ScenarioExecutionResult>};

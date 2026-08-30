@@ -15,6 +15,9 @@ Optimize → Prove → PR**.
 - `src/trueforge.ts` calls the same-origin `/api/trueforge` proxy when enabled;
   the Vite server attaches the server-only key and falls back explicitly to
   deterministic mode when the proxy is unavailable.
+- `server/github.ts` reads a bounded text snapshot from the selected exact
+  GitHub commit for real-repository static provider detection; inferred results
+  remain distinct from runtime-measured evidence.
 - `docs/HACKATHON_DEMO.md` remains the stable V1 presentation path.
 
 ## Safety boundaries
@@ -28,13 +31,13 @@ there is no automatic merge or default-branch push.
 
 The local server-side store and migrations, run lifecycle/approval guards,
 TrueForge session streaming, provider-neutral instrumentation contracts,
-cross-call analysis, bounded optimization loop, and sandbox executor boundary
-are implemented and covered by local tests. The default fixture remains
-deterministic unless the same-origin proxy is enabled. Private GitHub OAuth and
-repository MCP authorization, remote patch/branch/PR creation, live provider
-SDK/framework hooks, and full remote sandbox scenario evidence still require
-configured external integrations; unavailable remote execution is reported as
-`NOT_VERIFIED`, never as a host-side pass.
+cross-call analysis, bounded optimization loop, sandbox executor boundary, and
+bounded GitHub source snapshots are implemented and covered by local tests. The
+default fixture remains deterministic unless the same-origin proxy is enabled.
+Private GitHub OAuth and repository MCP authorization, remote patch/branch/PR
+creation, live provider SDK/framework hooks, and full remote sandbox scenario
+evidence still require configured external integrations; unavailable remote
+execution is reported as `NOT_VERIFIED`, never as a host-side pass.
 
 ## Local setup
 
@@ -43,5 +46,10 @@ configured external integrations; unavailable remote execution is reported as
 3. Keep `TRUEFORGE_API_KEY` server-only; set `VITE_TRUEFORGE_PROXY_ENABLED=true` to enable the proxy path.
 4. Run `pnpm dev` and open `http://localhost:5188`.
 5. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm lint`.
+
+For production GitHub inspection, configure both the server-only `GITHUB_TOKEN`
+and `FORGEOPTIMIZER_API_TOKEN`; the deployment gateway or authenticated client
+must send the latter as a bearer token. The browser never receives the GitHub
+token.
 
 The V2 development server includes a local SQLite run store at `.data/forgeoptimizer.sqlite`. Its API boundary includes run creation, lifecycle, candidate, plan, result, approval, publish, and event endpoints under `/api/runs` and `/api/candidates`. This persists safe orchestration state and agent events; target repositories are not executed by this host-side API.

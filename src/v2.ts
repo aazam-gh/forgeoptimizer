@@ -1,72 +1,805 @@
-import type { AIInvocation, BaselineProfile, Candidate, CaptureLevel, CostProjection, EvaluationCase, EvaluationResult, OptimizationPlan, OptimizationPlanStep, OptimizationPolicy, OptimizationScenario, PullRequestRecord, RunMetrics } from './domain';
-import { estimateCost } from './pricing';
-import { analyzeBlastRadius } from './blastRadius';
+import type {
+  AIInvocation,
+  BaselineProfile,
+  Candidate,
+  CaptureLevel,
+  CostProjection,
+  EvaluationCase,
+  EvaluationResult,
+  OptimizationPlan,
+  OptimizationPlanStep,
+  OptimizationPolicy,
+  OptimizationScenario,
+  PullRequestRecord,
+  RunMetrics,
+  ScoringWeights,
+} from "./domain";
+import { estimateCost } from "./pricing";
+import { analyzeBlastRadius } from "./blastRadius";
 
-export const defaultOptimizationPolicy:OptimizationPolicy={maxBehavioralRisk:'medium',minimumExpectedSavingsPercent:5,allowModelChanges:true,allowPromptChanges:true,allowDependencyChanges:true,allowAiRemoval:true,maxFilesPerPatch:15,requireAllTests:true,requireReviewAgent:true};
-export const defaultScenario:OptimizationScenario={id:'scenario-fixture-test',name:'Fixture regression suite',command:'pnpm test',cwd:'.',timeoutMs:120000,expectedExitStatus:0,category:'test',requiredEnv:[]};
+export const defaultOptimizationPolicy: OptimizationPolicy = {
+  maxBehavioralRisk: "medium",
+  minimumExpectedSavingsPercent: 5,
+  allowModelChanges: true,
+  allowPromptChanges: true,
+  allowDependencyChanges: true,
+  allowAiRemoval: true,
+  maxFilesPerPatch: 15,
+  requireAllTests: true,
+  requireReviewAgent: true,
+  allowedDependencyPackages: [],
+};
+export const defaultScoringWeights: ScoringWeights = {
+  maxFrequencyWeight: 2,
+  minimumFrequencyWeight: 0.25,
+  maximumCoverageWeight: 1,
+  minimumCoverageWeight: 0.1,
+  maximumBlastRadiusPenalty: 0.1,
+  minimumBlastRadiusWeight: 0.25,
+  estimatedQualityWeight: 0.8,
+  inferredQualityWeight: 0.55,
+  minimumComplexity: 0.25,
+};
+export const defaultScenario: OptimizationScenario = {
+  id: "scenario-fixture-test",
+  name: "Fixture regression suite",
+  command: "pnpm test",
+  cwd: ".",
+  timeoutMs: 120000,
+  expectedExitStatus: 0,
+  category: "test",
+  requiredEnv: [],
+};
 
-const secretPatterns=[/sk-[A-Za-z0-9_-]{12,}/gi,/gh[pousr]_[A-Za-z0-9_]{20,}/gi,/Bearer\s+[A-Za-z0-9._-]+/gi,/AIza[A-Za-z0-9_-]{20,}/gi];
-export function redactSecrets(value:string):string{return secretPatterns.reduce((result,pattern)=>result.replace(pattern,'[REDACTED]'),value);}
-const MAX_METADATA_DEPTH=8;
-const MAX_METADATA_NODES=500;
-const MAX_METADATA_STRING_LENGTH=4000;
-const secretField=/^(authorization|proxy[-_]?authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|credential|prompt|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt)$/i;
-const credentialField=/^(authorization|proxy[-_]?authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|credential)$/i;
-const metadataFields=/^(status|finish[-_]?reason|usage|provider|model|request|response|latency(?:ms)?|error|cache[-_]?hit|input[-_]?tokens|output[-_]?tokens|content[-_]?type)$/i;
-type MetadataWalk={ancestors:WeakSet<object>;nodes:number};
-function metadataKey(key:string):string{return key.replace(/([a-z])([A-Z])/g,'$1-$2');}
-function cloneMetadata(value:unknown,walk:MetadataWalk={ancestors:new WeakSet(),nodes:0},depth=0,memo=new WeakMap<object,unknown>()):unknown{
- if(++walk.nodes>MAX_METADATA_NODES||depth>MAX_METADATA_DEPTH)return'[TRUNCATED]';
- if(value===null||typeof value!=='object')return typeof value==='string'?value.slice(0,MAX_METADATA_STRING_LENGTH):value;
- const object=value as object;
- if(memo.has(object))return memo.get(object);
- if(value instanceof Date)return new Date(value.getTime());
- if(value instanceof Map){const result=new Map<unknown,unknown>();memo.set(object,result);value.forEach((item,key)=>{const clonedKey=cloneMetadata(key,walk,depth+1,memo);result.set(clonedKey,typeof key==='string'&&credentialField.test(metadataKey(key))?'[REDACTED]':cloneMetadata(item,walk,depth+1,memo));});return result;}
- if(value instanceof Set){const result=new Set<unknown>();memo.set(object,result);value.forEach(item=>result.add(cloneMetadata(item,walk,depth+1,memo)));return result;}
- if(value instanceof Error){const result=new Error(redactSecrets(value.message));result.name=value.name;result.stack=value.stack?redactSecrets(value.stack):undefined;memo.set(object,result);Object.entries(value).forEach(([key,item])=>Object.assign(result,{[key]:credentialField.test(metadataKey(key))?'[REDACTED]':cloneMetadata(item,walk,depth+1,memo)}));return result;}
- if(Array.isArray(value)){const result:unknown[]=[];memo.set(object,result);value.forEach(item=>result.push(cloneMetadata(item,walk,depth+1,memo)));return result;}
- const result=Object.create(Object.getPrototypeOf(value)) as Record<string,unknown>;memo.set(object,result);Object.entries(value).forEach(([key,item])=>{result[key]=credentialField.test(metadataKey(key))?'[REDACTED]':cloneMetadata(item,walk,depth+1,memo);});return result;
+const secretPatterns = [
+  /sk-[A-Za-z0-9_-]{12,}/gi,
+  /gh[pousr]_[A-Za-z0-9_]{20,}/gi,
+  /Bearer\s+[A-Za-z0-9._-]+/gi,
+  /AIza[A-Za-z0-9_-]{20,}/gi,
+];
+export function redactSecrets(value: string): string {
+  return secretPatterns.reduce(
+    (result, pattern) => result.replace(pattern, "[REDACTED]"),
+    value,
+  );
 }
-function sanitize(value:unknown,walk:MetadataWalk={ancestors:new WeakSet(),nodes:0},depth=0):unknown{
- if(++walk.nodes>MAX_METADATA_NODES||depth>MAX_METADATA_DEPTH)return'[TRUNCATED]';
- if(typeof value==='string')return redactSecrets(value).slice(0,MAX_METADATA_STRING_LENGTH);
- if(value===null||typeof value!=='object')return value;
- const object=value as object;
- if(walk.ancestors.has(object))return'[Circular]';
- walk.ancestors.add(object);
- let result:unknown;
- if(value instanceof Date)result=new Date(value.getTime());
- else if(value instanceof Map)result=new Map(Array.from(value.entries(),([key,item])=>[sanitize(key,walk,depth+1),typeof key==='string'&&secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)]));
- else if(value instanceof Set)result=new Set(Array.from(value, item=>sanitize(item,walk,depth+1)));
- else if(value instanceof Error){const error=new Error(redactSecrets(value.message));error.name=value.name;error.stack=value.stack?redactSecrets(value.stack):undefined;Object.entries(value).forEach(([key,item])=>Object.assign(error,{[key]:secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)}));result=error;}
- else if(Array.isArray(value))result=value.map(item=>sanitize(item,walk,depth+1));
- else result=Object.fromEntries(Object.entries(value).map(([key,item])=>[key,secretField.test(metadataKey(key))?'[REDACTED]':sanitize(item,walk,depth+1)]));
- walk.ancestors.delete(object);return result;
+const MAX_METADATA_DEPTH = 8;
+const MAX_METADATA_NODES = 500;
+const MAX_METADATA_STRING_LENGTH = 4000;
+const secretField =
+  /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth|prompt(?:[-_]?text)?|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt|content|contents|messages?|input|output)$/i;
+const credentialField =
+  /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth)$/i;
+const metadataFields =
+  /^(status|finish[-_]?reason|usage|provider|model|request|response|latency(?:ms)?|error|cache[-_]?hit|input[-_]?tokens|output[-_]?tokens|content[-_]?type)$/i;
+type MetadataWalk = { ancestors: WeakSet<object>; nodes: number };
+function metadataKey(key: string): string {
+  return key.replace(/([a-z])([A-Z])/g, "$1-$2");
 }
-export function safeMetadata(value:Record<string,unknown>,captureLevel:CaptureLevel):Record<string,unknown>{
- if(captureLevel==='full_local_only'&&import.meta.env.DEV)return cloneMetadata(value) as Record<string,unknown>;
- const sanitized=sanitize(value) as Record<string,unknown>;
- if(captureLevel==='metadata_only')return Object.fromEntries(Object.entries(sanitized).filter(([key])=>metadataFields.test(metadataKey(key))));
- return sanitized;
+function cloneMetadata(
+  value: unknown,
+  walk: MetadataWalk = { ancestors: new WeakSet(), nodes: 0 },
+  depth = 0,
+  memo = new WeakMap<object, unknown>(),
+): unknown {
+  if (++walk.nodes > MAX_METADATA_NODES || depth > MAX_METADATA_DEPTH)
+    return "[TRUNCATED]";
+  if (value === null || typeof value !== "object")
+    return typeof value === "string"
+      ? value.slice(0, MAX_METADATA_STRING_LENGTH)
+      : value;
+  const object = value as object;
+  if (memo.has(object)) return memo.get(object);
+  if (value instanceof Date) return new Date(value.getTime());
+  if (value instanceof Map) {
+    const result = new Map<unknown, unknown>();
+    memo.set(object, result);
+    value.forEach((item, key) => {
+      const clonedKey = cloneMetadata(key, walk, depth + 1, memo);
+      result.set(
+        clonedKey,
+        typeof key === "string" && credentialField.test(metadataKey(key))
+          ? "[REDACTED]"
+          : cloneMetadata(item, walk, depth + 1, memo),
+      );
+    });
+    return result;
+  }
+  if (value instanceof Set) {
+    const result = new Set<unknown>();
+    memo.set(object, result);
+    value.forEach((item) =>
+      result.add(cloneMetadata(item, walk, depth + 1, memo)),
+    );
+    return result;
+  }
+  if (value instanceof Error) {
+    const result = new Error(redactSecrets(value.message));
+    result.name = value.name;
+    result.stack = value.stack ? redactSecrets(value.stack) : undefined;
+    memo.set(object, result);
+    Object.entries(value).forEach(([key, item]) =>
+      Object.assign(result, {
+        [key]: credentialField.test(metadataKey(key))
+          ? "[REDACTED]"
+          : cloneMetadata(item, walk, depth + 1, memo),
+      }),
+    );
+    return result;
+  }
+  if (Array.isArray(value)) {
+    const result: unknown[] = [];
+    memo.set(object, result);
+    value.forEach((item) =>
+      result.push(cloneMetadata(item, walk, depth + 1, memo)),
+    );
+    return result;
+  }
+  const result = Object.create(Object.getPrototypeOf(value)) as Record<
+    string,
+    unknown
+  >;
+  memo.set(object, result);
+  Object.entries(value).forEach(([key, item]) => {
+    result[key] = credentialField.test(metadataKey(key))
+      ? "[REDACTED]"
+      : cloneMetadata(item, walk, depth + 1, memo);
+  });
+  return result;
 }
-function canonicalFingerprintInput(provider:string,model:string|undefined,callSite:string,input:string):string{return JSON.stringify({provider:provider.trim().toLowerCase(),model:(model??'').trim().toLowerCase(),callSite:callSite.trim().replace(/\\/g,'/'),input:redactSecrets(input).trim().replace(/\s+/g,' ')});}
-export async function fingerprintRequest(provider:string,model:string|undefined,callSite:string,input:string):Promise<string>{const bytes=new TextEncoder().encode(canonicalFingerprintInput(provider,model,callSite,input));const digest=await crypto.subtle.digest('SHA-256',bytes);return`fp:v2:${Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('')}`;}
-export function createInvocation(input:Omit<AIInvocation,'id'|'timestamp'>):AIInvocation{return{...input,id:crypto.randomUUID(),timestamp:new Date().toISOString()};}
-export async function instrumentInvocation<T>(meta:Omit<AIInvocation,'id'|'timestamp'|'latencyMs'|'error'>,operation:()=>Promise<T>):Promise<{value:T;invocation:AIInvocation}>{const started=performance.now();let invocationMeta={...meta};try{invocationMeta={...meta,metadata:safeMetadata(meta.metadata,meta.captureLevel)};}catch{invocationMeta={...meta,metadata:{sanitizationError:'Metadata sanitization failed'}};}try{const value=await operation();return{value,invocation:createInvocation({...invocationMeta,latencyMs:Math.round(performance.now()-started),error:false})};}catch(error){throw Object.assign(error instanceof Error?error:new Error('Invocation failed'),{invocation:createInvocation({...invocationMeta,latencyMs:Math.round(performance.now()-started),error:true})});}}
+function sanitize(
+  value: unknown,
+  walk: MetadataWalk = { ancestors: new WeakSet(), nodes: 0 },
+  depth = 0,
+): unknown {
+  if (++walk.nodes > MAX_METADATA_NODES || depth > MAX_METADATA_DEPTH)
+    return "[TRUNCATED]";
+  if (typeof value === "string")
+    return redactSecrets(value).slice(0, MAX_METADATA_STRING_LENGTH);
+  if (value === null || typeof value !== "object") return value;
+  const object = value as object;
+  if (walk.ancestors.has(object)) return "[Circular]";
+  walk.ancestors.add(object);
+  let result: unknown;
+  if (value instanceof Date) result = new Date(value.getTime());
+  else if (value instanceof Map)
+    result = new Map(
+      Array.from(value.entries(), ([key, item]) => [
+        sanitize(key, walk, depth + 1),
+        typeof key === "string" && secretField.test(metadataKey(key))
+          ? "[REDACTED]"
+          : sanitize(item, walk, depth + 1),
+      ]),
+    );
+  else if (value instanceof Set)
+    result = new Set(
+      Array.from(value, (item) => sanitize(item, walk, depth + 1)),
+    );
+  else if (value instanceof Error) {
+    const error = new Error(redactSecrets(value.message));
+    error.name = value.name;
+    error.stack = value.stack ? redactSecrets(value.stack) : undefined;
+    Object.entries(value).forEach(([key, item]) =>
+      Object.assign(error, {
+        [key]: secretField.test(metadataKey(key))
+          ? "[REDACTED]"
+          : sanitize(item, walk, depth + 1),
+      }),
+    );
+    result = error;
+  } else if (Array.isArray(value))
+    result = value.map((item) =>
+      typeof item === "string"
+        ? "[REDACTED]"
+        : sanitize(item, walk, depth + 1),
+    );
+  else
+    result = Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        secretField.test(metadataKey(key))
+          ? "[REDACTED]"
+          : sanitize(item, walk, depth + 1),
+      ]),
+    );
+  walk.ancestors.delete(object);
+  return result;
+}
+export function safeMetadata(
+  value: Record<string, unknown>,
+  captureLevel: CaptureLevel,
+): Record<string, unknown> {
+  if (captureLevel === "full_local_only" && import.meta.env.DEV)
+    return cloneMetadata(value) as Record<string, unknown>;
+  const sanitized = sanitize(value) as Record<string, unknown>;
+  if (captureLevel === "metadata_only")
+    return Object.fromEntries(
+      Object.entries(sanitized).filter(([key]) =>
+        metadataFields.test(metadataKey(key)),
+      ),
+    );
+  return sanitized;
+}
+function canonicalFingerprintInput(
+  provider: string,
+  model: string | undefined,
+  callSite: string,
+  input: string,
+): string {
+  return JSON.stringify({
+    provider: provider.trim().toLowerCase(),
+    model: (model ?? "").trim().toLowerCase(),
+    callSite: callSite.trim().replace(/\\/g, "/"),
+    input: redactSecrets(input).trim().replace(/\s+/g, " "),
+  });
+}
+export async function fingerprintRequest(
+  provider: string,
+  model: string | undefined,
+  callSite: string,
+  input: string,
+): Promise<string> {
+  const bytes = new TextEncoder().encode(
+    canonicalFingerprintInput(provider, model, callSite, input),
+  );
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return `fp:v2:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("")}`;
+}
+export function createInvocation(
+  input: Omit<AIInvocation, "id" | "timestamp">,
+): AIInvocation {
+  return {
+    ...input,
+    id: crypto.randomUUID(),
+    timestamp: new Date().toISOString(),
+  };
+}
+export async function instrumentInvocation<T>(
+  meta: Omit<AIInvocation, "id" | "timestamp" | "latencyMs" | "error">,
+  operation: () => Promise<T>,
+): Promise<{ value: T; invocation: AIInvocation }> {
+  const started = performance.now();
+  let invocationMeta = { ...meta };
+  try {
+    invocationMeta = {
+      ...meta,
+      metadata: safeMetadata(meta.metadata, meta.captureLevel),
+    };
+  } catch {
+    invocationMeta = {
+      ...meta,
+      metadata: { sanitizationError: "Metadata sanitization failed" },
+    };
+  }
+  try {
+    const value = await operation();
+    return {
+      value,
+      invocation: createInvocation({
+        ...invocationMeta,
+        latencyMs: Math.round(performance.now() - started),
+        error: false,
+      }),
+    };
+  } catch (error) {
+    throw Object.assign(
+      error instanceof Error ? error : new Error("Invocation failed"),
+      {
+        invocation: createInvocation({
+          ...invocationMeta,
+          latencyMs: Math.round(performance.now() - started),
+          error: true,
+        }),
+      },
+    );
+  }
+}
 
-function jsonEqual(left:unknown,right:unknown):boolean{if(Object.is(left,right))return true;if(Array.isArray(left)&&Array.isArray(right))return left.length===right.length&&left.every((item,index)=>jsonEqual(item,right[index]));if(left&&right&&typeof left==='object'&&typeof right==='object'){const a=left as Record<string,unknown>;const b=right as Record<string,unknown>;const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(key=>key in b&&jsonEqual(a[key],b[key]));}return false;}
-function subset(expected:unknown,actual:unknown):boolean{if(expected&&typeof expected==='object'&&actual&&typeof actual==='object'&&!Array.isArray(expected)&&!Array.isArray(actual))return Object.entries(expected as Record<string,unknown>).every(([key,value])=>key in (actual as Record<string,unknown>)&&subset(value,(actual as Record<string,unknown>)[key]));return jsonEqual(expected,actual);}
-function schemaMatches(expected:unknown,actual:unknown):boolean{if(expected===null||actual===null||typeof expected!==typeof actual||Array.isArray(expected)!==Array.isArray(actual))return expected===actual;if(Array.isArray(expected))return expected.length===0||((actual as unknown[]).every(item=>schemaMatches(expected[0],item)));if(typeof expected==='object')return Object.entries(expected as Record<string,unknown>).every(([key,value])=>key in (actual as Record<string,unknown>)&&schemaMatches(value,(actual as Record<string,unknown>)[key]));return true;}
-function baselineEquivalent(test:EvaluationCase,baseline:unknown,candidate:unknown):boolean{switch(test.evaluator){case'exact':case'snapshot':return jsonEqual(baseline,candidate);case'json':return jsonEqual(typeof baseline==='string'?JSON.parse(baseline):baseline,typeof candidate==='string'?JSON.parse(candidate):candidate);case'numeric_tolerance':return Number.isFinite(Number(baseline))&&Number.isFinite(Number(candidate))&&Math.abs(Number(baseline)-Number(candidate))<=(test.tolerance??0);case'regex':{const pattern=new RegExp(String(test.expected));return pattern.test(String(baseline))&&pattern.test(String(candidate));}case'schema':return schemaMatches(test.expected,baseline)&&schemaMatches(test.expected,candidate);case'subset':case'http_assertion':return subset(test.expected,baseline)&&subset(test.expected,candidate);}}
-export function evaluateCase(test:EvaluationCase,baseline:unknown,candidate:unknown):EvaluationResult{let passed=false;let reason='';try{switch(test.evaluator){case'exact':case'snapshot':passed=jsonEqual(test.expected,candidate);reason=passed?'Exact output matched':'Output differs from expected';break;case'json':{const expected=typeof test.expected==='string'?JSON.parse(test.expected):test.expected;const actual=typeof candidate==='string'?JSON.parse(candidate):candidate;passed=jsonEqual(expected,actual);reason=passed?'JSON structures matched':'JSON structures differ';break;}case'numeric_tolerance':{const expected=Number(test.expected);const actual=Number(candidate);const tolerance=test.tolerance??0;passed=Number.isFinite(actual)&&Math.abs(expected-actual)<=tolerance;reason=`difference ${Math.abs(expected-actual)} ${passed?'within':'exceeds'} tolerance ${tolerance}`;break;}case'regex':passed=new RegExp(String(test.expected)).test(String(candidate));reason=passed?'Regex matched':'Regex did not match';break;case'subset':passed=subset(test.expected,candidate);reason=passed?'Expected subset found':'Expected subset missing';break;case'schema':passed=schemaMatches(test.expected,candidate);reason=passed?'Candidate matches expected schema':'Candidate does not match expected schema';break;case'http_assertion':passed=subset(test.expected,candidate);reason=passed?'HTTP assertion passed':'HTTP assertion failed';break;}if(passed&&!baselineEquivalent(test,baseline,candidate)){passed=false;reason='Candidate differs from the exact baseline result';}}catch(error){passed=false;reason=`Evaluator error: ${error instanceof Error?error.message:'invalid test input'}`;}return{caseId:test.id,baseline,candidate,passed,confidence:test.source==='existing_test'?'HIGH':'MEDIUM',reason};}
+function jsonEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) && Array.isArray(right))
+    return (
+      left.length === right.length &&
+      left.every((item, index) => jsonEqual(item, right[index]))
+    );
+  if (left && right && typeof left === "object" && typeof right === "object") {
+    const a = left as Record<string, unknown>;
+    const b = right as Record<string, unknown>;
+    const keys = Object.keys(a);
+    return (
+      keys.length === Object.keys(b).length &&
+      keys.every((key) => key in b && jsonEqual(a[key], b[key]))
+    );
+  }
+  return false;
+}
+function subset(expected: unknown, actual: unknown): boolean {
+  if (
+    expected &&
+    typeof expected === "object" &&
+    actual &&
+    typeof actual === "object" &&
+    !Array.isArray(expected) &&
+    !Array.isArray(actual)
+  )
+    return Object.entries(expected as Record<string, unknown>).every(
+      ([key, value]) =>
+        key in (actual as Record<string, unknown>) &&
+        subset(value, (actual as Record<string, unknown>)[key]),
+    );
+  return jsonEqual(expected, actual);
+}
+function schemaMatches(expected: unknown, actual: unknown): boolean {
+  if (
+    expected === null ||
+    actual === null ||
+    typeof expected !== typeof actual ||
+    Array.isArray(expected) !== Array.isArray(actual)
+  )
+    return expected === actual;
+  if (Array.isArray(expected))
+    return (
+      expected.length === 0 ||
+      (actual as unknown[]).every((item) => schemaMatches(expected[0], item))
+    );
+  if (typeof expected === "object")
+    return Object.entries(expected as Record<string, unknown>).every(
+      ([key, value]) =>
+        key in (actual as Record<string, unknown>) &&
+        schemaMatches(value, (actual as Record<string, unknown>)[key]),
+    );
+  return true;
+}
+function baselineEquivalent(
+  test: EvaluationCase,
+  baseline: unknown,
+  candidate: unknown,
+): boolean {
+  switch (test.evaluator) {
+    case "exact":
+    case "snapshot":
+      return jsonEqual(baseline, candidate);
+    case "json":
+      return jsonEqual(
+        typeof baseline === "string" ? JSON.parse(baseline) : baseline,
+        typeof candidate === "string" ? JSON.parse(candidate) : candidate,
+      );
+    case "numeric_tolerance":
+      return (
+        Number.isFinite(Number(baseline)) &&
+        Number.isFinite(Number(candidate)) &&
+        Math.abs(Number(baseline) - Number(candidate)) <= (test.tolerance ?? 0)
+      );
+    case "regex": {
+      const pattern = new RegExp(String(test.expected));
+      return pattern.test(String(baseline)) && pattern.test(String(candidate));
+    }
+    case "schema":
+      return (
+        schemaMatches(test.expected, baseline) &&
+        schemaMatches(test.expected, candidate)
+      );
+    case "subset":
+    case "http_assertion":
+      return (
+        subset(test.expected, baseline) && subset(test.expected, candidate)
+      );
+  }
+}
+export function evaluateCase(
+  test: EvaluationCase,
+  baseline: unknown,
+  candidate: unknown,
+): EvaluationResult {
+  let passed = false;
+  let reason = "";
+  try {
+    switch (test.evaluator) {
+      case "exact":
+      case "snapshot":
+        passed = jsonEqual(test.expected, candidate);
+        reason = passed
+          ? "Exact output matched"
+          : "Output differs from expected";
+        break;
+      case "json": {
+        const expected =
+          typeof test.expected === "string"
+            ? JSON.parse(test.expected)
+            : test.expected;
+        const actual =
+          typeof candidate === "string" ? JSON.parse(candidate) : candidate;
+        passed = jsonEqual(expected, actual);
+        reason = passed ? "JSON structures matched" : "JSON structures differ";
+        break;
+      }
+      case "numeric_tolerance": {
+        const expected = Number(test.expected);
+        const actual = Number(candidate);
+        const tolerance = test.tolerance ?? 0;
+        passed =
+          Number.isFinite(actual) && Math.abs(expected - actual) <= tolerance;
+        reason = `difference ${Math.abs(expected - actual)} ${passed ? "within" : "exceeds"} tolerance ${tolerance}`;
+        break;
+      }
+      case "regex":
+        passed = new RegExp(String(test.expected)).test(String(candidate));
+        reason = passed ? "Regex matched" : "Regex did not match";
+        break;
+      case "subset":
+        passed = subset(test.expected, candidate);
+        reason = passed ? "Expected subset found" : "Expected subset missing";
+        break;
+      case "schema":
+        passed = schemaMatches(test.expected, candidate);
+        reason = passed
+          ? "Candidate matches expected schema"
+          : "Candidate does not match expected schema";
+        break;
+      case "http_assertion":
+        passed = subset(test.expected, candidate);
+        reason = passed ? "HTTP assertion passed" : "HTTP assertion failed";
+        break;
+    }
+    if (passed && !baselineEquivalent(test, baseline, candidate)) {
+      passed = false;
+      reason = "Candidate differs from the exact baseline result";
+    }
+  } catch (error) {
+    passed = false;
+    reason = `Evaluator error: ${error instanceof Error ? error.message : "invalid test input"}`;
+  }
+  return {
+    caseId: test.id,
+    baseline,
+    candidate,
+    passed,
+    confidence: test.source === "existing_test" ? "HIGH" : "MEDIUM",
+    reason,
+  };
+}
 
-export function scoreCandidateBreakdown(candidate:Candidate,callFrequency=candidate.frequencyPerDay??1,testCoverage=candidate.testCoverage??1,complexity=candidate.complexity??1){const confidence=candidate.confidence==='HIGH'?1:candidate.confidence==='MEDIUM'?.65:.35;const safety=candidate.risk==='LOW'?1:candidate.risk==='MEDIUM'?.7:.4;const frequencyWeight=Math.min(2,Math.max(.25,Math.log10(Math.max(1,callFrequency))+1));const coverageWeight=Math.min(1,Math.max(.1,testCoverage));const blastWeight=Math.min(1,Math.max(.25,1-(candidate.blastRadius??0)*.1));const qualityWeight=candidate.measurementQuality==='MEASURED'?1:candidate.measurementQuality==='ESTIMATED'?.8:.55;const value=(candidate.savingsPercent/100)*confidence*safety*frequencyWeight*coverageWeight*blastWeight*qualityWeight/Math.max(.25,complexity);return{value:Number(value.toFixed(4)),savings:Number((candidate.savingsPercent/100).toFixed(4)),confidence,safety,frequency:frequencyWeight,coverage:coverageWeight,blastRadius:blastWeight,measurementQuality:qualityWeight,complexity:1/Math.max(.25,complexity)};}
-export function scoreCandidate(candidate:Candidate,callFrequency=candidate.frequencyPerDay??1,testCoverage=candidate.testCoverage??1,complexity=candidate.complexity??1):number{return scoreCandidateBreakdown(candidate,callFrequency,testCoverage,complexity).value;}
-export function scoreCandidateWithBlastRadius(candidate:Candidate,evidence:Parameters<typeof analyzeBlastRadius>[0],callFrequency=candidate.frequencyPerDay??1,testCoverage=candidate.testCoverage??1,complexity=candidate.complexity??1):number{return scoreCandidate({...candidate,blastRadius:analyzeBlastRadius(evidence).score*10},callFrequency,testCoverage,complexity);}
-export function buildOptimizationPlan(runId:string,candidates:Candidate[],policy:OptimizationPolicy=defaultOptimizationPolicy):OptimizationPlan{const allowedRisk=policy.maxBehavioralRisk==='low'?['LOW']:policy.maxBehavioralRisk==='medium'?['LOW','MEDIUM']:['LOW','MEDIUM','HIGH'];const eligible=candidates.filter(candidate=>{const changeType=candidate.changeType??(candidate.removesAi?'ai_removal':candidate.category==='Cheaper model'?'model':candidate.category==='Context reduction'?'prompt':'code');return candidate.savingsPercent>=policy.minimumExpectedSavingsPercent&&allowedRisk.includes(candidate.risk)&&(changeType!=='ai_removal'||policy.allowAiRemoval)&&(changeType!=='model'||policy.allowModelChanges)&&(changeType!=='prompt'||policy.allowPromptChanges)&&(changeType!=='dependency'||policy.allowDependencyChanges);});const allIds=new Set(candidates.map(candidate=>candidate.id));const validationErrors:string[]=[];const addError=(message:string)=>{if(!validationErrors.includes(message))validationErrors.push(message);};let survivors=new Map(eligible.map(candidate=>[candidate.id,candidate]));for(const candidate of eligible){for(const dependency of candidate.dependsOn??[]){if(!allIds.has(dependency))addError(`Candidate ${candidate.id} has missing dependency ${dependency}`);else if(!survivors.has(dependency))addError(`Candidate ${candidate.id} depends on filtered candidate ${dependency}`);}}let changed=true;while(changed){changed=false;for(const [id,candidate] of survivors){if((candidate.dependsOn??[]).some(dependency=>!survivors.has(dependency))){survivors.delete(id);changed=true;}}}const visiting=new Set<string>();const visited=new Set<string>();const visit=(id:string)=>{if(visiting.has(id)){addError(`Dependency cycle detected at ${id}`);return;}if(visited.has(id))return;visiting.add(id);for(const dependency of survivors.get(id)?.dependsOn??[])if(survivors.has(dependency))visit(dependency);visiting.delete(id);visited.add(id);};for(const id of survivors.keys())visit(id);const indegree=new Map<string,number>([...survivors.keys()].map(id=>[id,0]));const dependents=new Map<string,string[]>([...survivors.keys()].map(id=>[id,[]]));for(const [id,candidate] of survivors){for(const dependency of candidate.dependsOn??[]){if(!survivors.has(dependency))continue;indegree.set(id,(indegree.get(id)??0)+1);dependents.get(dependency)?.push(id);}}const ready=[...survivors.keys()].filter(id=>indegree.get(id)===0);const ordered:string[]=[];while(ready.length){ready.sort((a,b)=>scoreCandidate(survivors.get(b)!)-scoreCandidate(survivors.get(a)!));const id=ready.shift()!;ordered.push(id);for(const dependent of dependents.get(id)??[]){indegree.set(dependent,(indegree.get(dependent)??0)-1);if(indegree.get(dependent)===0)ready.push(dependent);}}if(ordered.length!==survivors.size)addError('Dependency cycle prevents a complete topological order');const steps:OptimizationPlanStep[]=ordered.map(id=>{const candidate=survivors.get(id)!;return{id:`step-${candidate.id}`,candidateId:candidate.id,title:candidate.title,dependsOn:(candidate.dependsOn??[]).filter(dependency=>survivors.has(dependency)).map(dependency=>`step-${dependency}`),score:scoreCandidate(candidate),scoreBreakdown:scoreCandidateBreakdown(candidate),status:'queued' as const};});const selected=[...survivors.values()];return{id:crypto.randomUUID(),runId,createdAt:new Date().toISOString(),steps,expectedSavingsPercent:selected.reduce((sum,candidate)=>sum+candidate.savingsPercent/selected.length,0)||0,risk:selected.some(candidate=>candidate.risk==='HIGH')?'HIGH':selected.some(candidate=>candidate.risk==='MEDIUM')?'MEDIUM':'LOW',valid:validationErrors.length===0,validationErrors};}
+export function scoreCandidateBreakdown(
+  candidate: Candidate,
+  callFrequency = candidate.frequencyPerDay ?? 1,
+  testCoverage = candidate.testCoverage ?? 1,
+  complexity = candidate.complexity ?? 1,
+  weights: Partial<ScoringWeights> = {},
+) {
+  const w = { ...defaultScoringWeights, ...weights };
+  const confidence =
+    candidate.confidence === "HIGH"
+      ? 1
+      : candidate.confidence === "MEDIUM"
+        ? 0.65
+        : 0.35;
+  const safety =
+    candidate.risk === "LOW" ? 1 : candidate.risk === "MEDIUM" ? 0.7 : 0.4;
+  const frequencyWeight = Math.min(
+    w.maxFrequencyWeight,
+    Math.max(
+      w.minimumFrequencyWeight,
+      Math.log10(Math.max(1, callFrequency)) + 1,
+    ),
+  );
+  const coverageWeight = Math.min(
+    w.maximumCoverageWeight,
+    Math.max(w.minimumCoverageWeight, testCoverage),
+  );
+  const blastWeight = Math.min(
+    1,
+    Math.max(
+      w.minimumBlastRadiusWeight,
+      1 - (candidate.blastRadius ?? 0) * w.maximumBlastRadiusPenalty,
+    ),
+  );
+  const qualityWeight =
+    candidate.measurementQuality === "MEASURED"
+      ? 1
+      : candidate.measurementQuality === "ESTIMATED"
+        ? w.estimatedQualityWeight
+        : w.inferredQualityWeight;
+  const value =
+    ((candidate.savingsPercent / 100) *
+      confidence *
+      safety *
+      frequencyWeight *
+      coverageWeight *
+      blastWeight *
+      qualityWeight) /
+    Math.max(0.0001, w.minimumComplexity, complexity);
+  return {
+    value: Number(value.toFixed(4)),
+    savings: Number((candidate.savingsPercent / 100).toFixed(4)),
+    confidence,
+    safety,
+    frequency: frequencyWeight,
+    coverage: coverageWeight,
+    blastRadius: blastWeight,
+    measurementQuality: qualityWeight,
+    complexity: 1 / Math.max(0.0001, w.minimumComplexity, complexity),
+  };
+}
+export function scoreCandidate(
+  candidate: Candidate,
+  callFrequency = candidate.frequencyPerDay ?? 1,
+  testCoverage = candidate.testCoverage ?? 1,
+  complexity = candidate.complexity ?? 1,
+  weights: Partial<ScoringWeights> = {},
+): number {
+  return scoreCandidateBreakdown(
+    candidate,
+    callFrequency,
+    testCoverage,
+    complexity,
+    weights,
+  ).value;
+}
+export function scoreCandidateWithBlastRadius(
+  candidate: Candidate,
+  evidence: Parameters<typeof analyzeBlastRadius>[0],
+  callFrequency = candidate.frequencyPerDay ?? 1,
+  testCoverage = candidate.testCoverage ?? 1,
+  complexity = candidate.complexity ?? 1,
+  weights: Partial<ScoringWeights> = {},
+): number {
+  return scoreCandidate(
+    { ...candidate, blastRadius: analyzeBlastRadius(evidence).score * 10 },
+    callFrequency,
+    testCoverage,
+    complexity,
+    weights,
+  );
+}
+export function buildOptimizationPlan(
+  runId: string,
+  candidates: Candidate[],
+  policy: OptimizationPolicy = defaultOptimizationPolicy,
+): OptimizationPlan {
+  const scoreWeights = policy.scoringWeights ?? {};
+  const scoreForPlan = (candidate: Candidate) =>
+    scoreCandidate(
+      candidate,
+      candidate.frequencyPerDay ?? 1,
+      candidate.testCoverage ?? 1,
+      candidate.complexity ?? 1,
+      scoreWeights,
+    );
+  const allowedRisk =
+    policy.maxBehavioralRisk === "low"
+      ? ["LOW"]
+      : policy.maxBehavioralRisk === "medium"
+        ? ["LOW", "MEDIUM"]
+        : ["LOW", "MEDIUM", "HIGH"];
+  const eligible = candidates.filter((candidate) => {
+    const changeType =
+      candidate.changeType ??
+      (candidate.removesAi
+        ? "ai_removal"
+        : candidate.category === "Cheaper model"
+          ? "model"
+          : candidate.category === "Context reduction"
+            ? "prompt"
+            : "code");
+    const dependencyAllowed =
+      changeType !== "dependency" ||
+      (candidate.diff.includes("package.json") &&
+        (candidate.diff.includes("pnpm-lock.yaml") ||
+          candidate.diff.includes("package-lock.json") ||
+          candidate.diff.includes("yarn.lock")) &&
+        (policy.allowedDependencyPackages ?? []).some((packageName) =>
+          candidate.diff.includes(`"${packageName}"`),
+        ));
+    return (
+      candidate.savingsPercent >= policy.minimumExpectedSavingsPercent &&
+      allowedRisk.includes(candidate.risk) &&
+      (changeType !== "ai_removal" || policy.allowAiRemoval) &&
+      (changeType !== "model" || policy.allowModelChanges) &&
+      (changeType !== "prompt" || policy.allowPromptChanges) &&
+      (changeType !== "dependency" || policy.allowDependencyChanges) &&
+      dependencyAllowed
+    );
+  });
+  const allIds = new Set(candidates.map((candidate) => candidate.id));
+  const validationErrors: string[] = [];
+  const addError = (message: string) => {
+    if (!validationErrors.includes(message)) validationErrors.push(message);
+  };
+  const changedFiles = (diff: string): string[] =>
+    [...diff.matchAll(/^(?:\+\+\+|---) [ab]\/([^\n]+)$/gm)]
+      .map((match) => match[1])
+      .filter((file) => file !== "/dev/null");
+  for (const candidate of eligible) {
+    const files = new Set(changedFiles(candidate.diff));
+    if (files.size > policy.maxFilesPerPatch)
+      addError(
+        `Candidate ${candidate.id} changes ${files.size} files, exceeding maxFilesPerPatch ${policy.maxFilesPerPatch}`,
+      );
+  }
+  let survivors = new Map(
+    eligible.map((candidate) => [candidate.id, candidate]),
+  );
+  for (const candidate of eligible) {
+    for (const dependency of candidate.dependsOn ?? []) {
+      if (!allIds.has(dependency))
+        addError(
+          `Candidate ${candidate.id} has missing dependency ${dependency}`,
+        );
+      else if (!survivors.has(dependency))
+        addError(
+          `Candidate ${candidate.id} depends on filtered candidate ${dependency}`,
+        );
+    }
+  }
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [id, candidate] of survivors) {
+      if (
+        (candidate.dependsOn ?? []).some(
+          (dependency) => !survivors.has(dependency),
+        )
+      ) {
+        survivors.delete(id);
+        changed = true;
+      }
+    }
+  }
+  const visiting = new Set<string>();
+  const visited = new Set<string>();
+  const visit = (id: string) => {
+    if (visiting.has(id)) {
+      addError(`Dependency cycle detected at ${id}`);
+      return;
+    }
+    if (visited.has(id)) return;
+    visiting.add(id);
+    for (const dependency of survivors.get(id)?.dependsOn ?? [])
+      if (survivors.has(dependency)) visit(dependency);
+    visiting.delete(id);
+    visited.add(id);
+  };
+  for (const id of survivors.keys()) visit(id);
+  const indegree = new Map<string, number>(
+    [...survivors.keys()].map((id) => [id, 0]),
+  );
+  const dependents = new Map<string, string[]>(
+    [...survivors.keys()].map((id) => [id, []]),
+  );
+  for (const [id, candidate] of survivors) {
+    for (const dependency of candidate.dependsOn ?? []) {
+      if (!survivors.has(dependency)) continue;
+      indegree.set(id, (indegree.get(id) ?? 0) + 1);
+      dependents.get(dependency)?.push(id);
+    }
+  }
+  const ready = [...survivors.keys()].filter((id) => indegree.get(id) === 0);
+  const ordered: string[] = [];
+  while (ready.length) {
+    ready.sort(
+      (a, b) =>
+        scoreForPlan(survivors.get(b)!) - scoreForPlan(survivors.get(a)!),
+    );
+    const id = ready.shift()!;
+    ordered.push(id);
+    for (const dependent of dependents.get(id) ?? []) {
+      indegree.set(dependent, (indegree.get(dependent) ?? 0) - 1);
+      if (indegree.get(dependent) === 0) ready.push(dependent);
+    }
+  }
+  if (ordered.length !== survivors.size)
+    addError("Dependency cycle prevents a complete topological order");
+  const steps: OptimizationPlanStep[] = ordered.map((id) => {
+    const candidate = survivors.get(id)!;
+    return {
+      id: `step-${candidate.id}`,
+      candidateId: candidate.id,
+      title: candidate.title,
+      dependsOn: (candidate.dependsOn ?? [])
+        .filter((dependency) => survivors.has(dependency))
+        .map((dependency) => `step-${dependency}`),
+      score: scoreForPlan(candidate),
+      scoreBreakdown: scoreCandidateBreakdown(
+        candidate,
+        candidate.frequencyPerDay ?? 1,
+        candidate.testCoverage ?? 1,
+        candidate.complexity ?? 1,
+        scoreWeights,
+      ),
+      status: "queued" as const,
+    };
+  });
+  const selected = [...survivors.values()];
+  return {
+    id: crypto.randomUUID(),
+    runId,
+    createdAt: new Date().toISOString(),
+    steps,
+    expectedSavingsPercent:
+      selected.reduce(
+        (sum, candidate) => sum + candidate.savingsPercent / selected.length,
+        0,
+      ) || 0,
+    risk: selected.some((candidate) => candidate.risk === "HIGH")
+      ? "HIGH"
+      : selected.some((candidate) => candidate.risk === "MEDIUM")
+        ? "MEDIUM"
+        : "LOW",
+    valid: validationErrors.length === 0,
+    validationErrors,
+  };
+}
 
-export function projectSavings(before:RunMetrics,after:RunMetrics,requestsPerDay:number,quality:CostProjection['quality']='ESTIMATED',optimizerCost=0):CostProjection{const measuredPerRun=Math.max(0,before.cost-after.cost);const dailySavings=measuredPerRun*requestsPerDay;return{measuredPerRun,requestsPerDay,dailySavings,monthlySavings:dailySavings*30,annualSavings:dailySavings*365,optimizerCost,breakEvenDays:dailySavings>0?optimizerCost/dailySavings:undefined,roiMultiple:optimizerCost>0?dailySavings*30/optimizerCost:undefined,quality};}
-export function baselineFromRun(runId:string,commitSha:string,scenario:OptimizationScenario,metrics:RunMetrics,invocations:AIInvocation[]=[]):BaselineProfile{return{id:crypto.randomUUID(),runId,commitSha,capturedAt:new Date().toISOString(),scenarioId:scenario.id,invocations,testsPassed:0,testsFailed:0,tokens:metrics.tokens,cost:metrics.cost,latencyMs:metrics.latencyMs,outputs:[],quality:metrics.quality==='INFERRED'?'NOT_VERIFIED':metrics.quality};}
-export function formatPullRequestReport(metrics:{before:RunMetrics;after?:RunMetrics},candidates:Candidate[],branch:PullRequestRecord['branch']):string{const after=metrics.after;const savings=after&&metrics.before.cost>0?Math.max(0,(1-after.cost/metrics.before.cost)*100):undefined;return`# ForgeOptimizer AI Efficiency Report\n\n## Estimated impact\n\n- AI calls: ${metrics.before.calls} → ${after?.calls??'NOT VERIFIED'}\n- Tokens: ${metrics.before.tokens.toLocaleString()} → ${after?.tokens.toLocaleString()??'NOT VERIFIED'}\n- Estimated savings: ${savings===undefined?'NOT VERIFIED':`${savings.toFixed(1)}%`}\n\n## Optimizations\n\n${candidates.filter(candidate=>candidate.accepted!==false).map(candidate=>`- ${candidate.title}`).join('\n')||'- None approved'}\n\n## Validation\n\n- Tests and behavioral evaluations must be attached from the exact baseline commit.\n- Base: ${branch.baseBranch} @ ${branch.baseCommitSha}\n- Optimization branch: ${branch.optimizationBranch}\n\nGenerated by ForgeOptimizer.`;}
+export function projectSavings(
+  before: RunMetrics,
+  after: RunMetrics,
+  requestsPerDay: number,
+  quality: CostProjection["quality"] = "ESTIMATED",
+  optimizerCost = 0,
+): CostProjection {
+  const measuredPerRun = Math.max(0, before.cost - after.cost);
+  const dailySavings = measuredPerRun * requestsPerDay;
+  return {
+    measuredPerRun,
+    requestsPerDay,
+    dailySavings,
+    monthlySavings: dailySavings * 30,
+    annualSavings: dailySavings * 365,
+    optimizerCost,
+    breakEvenDays: dailySavings > 0 ? optimizerCost / dailySavings : undefined,
+    roiMultiple:
+      optimizerCost > 0 ? (dailySavings * 30) / optimizerCost : undefined,
+    quality,
+  };
+}
+export function baselineFromRun(
+  runId: string,
+  commitSha: string,
+  scenario: OptimizationScenario,
+  metrics: RunMetrics,
+  invocations: AIInvocation[] = [],
+): BaselineProfile {
+  return {
+    id: crypto.randomUUID(),
+    runId,
+    commitSha,
+    capturedAt: new Date().toISOString(),
+    scenarioId: scenario.id,
+    invocations,
+    testsPassed: 0,
+    testsFailed: 0,
+    tokens: metrics.tokens,
+    cost: metrics.cost,
+    latencyMs: metrics.latencyMs,
+    outputs: [],
+    quality: metrics.quality === "INFERRED" ? "NOT_VERIFIED" : metrics.quality,
+  };
+}
+export function formatPullRequestReport(
+  metrics: { before: RunMetrics; after?: RunMetrics },
+  candidates: Candidate[],
+  branch: PullRequestRecord["branch"],
+): string {
+  const after = metrics.after;
+  const savings =
+    after && metrics.before.cost > 0
+      ? Math.max(0, (1 - after.cost / metrics.before.cost) * 100)
+      : undefined;
+  return `# ForgeOptimizer AI Efficiency Report\n\n## Estimated impact\n\n- AI calls: ${metrics.before.calls} → ${after?.calls ?? "NOT VERIFIED"}\n- Tokens: ${metrics.before.tokens.toLocaleString()} → ${after?.tokens.toLocaleString() ?? "NOT VERIFIED"}\n- Estimated savings: ${savings === undefined ? "NOT VERIFIED" : `${savings.toFixed(1)}%`}\n\n## Optimizations\n\n${
+    candidates
+      .filter((candidate) => candidate.accepted !== false)
+      .map((candidate) => `- ${candidate.title}`)
+      .join("\n") || "- None approved"
+  }\n\n## Validation\n\n- Tests and behavioral evaluations must be attached from the exact baseline commit.\n- Base: ${branch.baseBranch} @ ${branch.baseCommitSha}\n- Optimization branch: ${branch.optimizationBranch}\n\nGenerated by ForgeOptimizer.`;
+}
 
-export function estimateInvocationCost(invocation:Pick<AIInvocation,'model'|'inputTokens'|'outputTokens'>):number{const estimate=estimateCost(invocation.model??'unknown',invocation.inputTokens??0,invocation.outputTokens??0);return estimate.quality==='ESTIMATED'?estimate.value:NaN;}
+export function estimateInvocationCost(
+  invocation: Pick<AIInvocation, "model" | "inputTokens" | "outputTokens">,
+): number {
+  const estimate = estimateCost(
+    invocation.model ?? "unknown",
+    invocation.inputTokens ?? 0,
+    invocation.outputTokens ?? 0,
+  );
+  return estimate.quality === "ESTIMATED" ? estimate.value : NaN;
+}

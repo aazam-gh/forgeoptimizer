@@ -5,7 +5,9 @@ export interface AiUsage { id:string; file:string; line:number; functionName:str
 export interface Candidate { id:string; usageId:string; file:string; line:number; category:Category; title:string; finding:string; recommendation:string; savingsPercent:number; confidence:Confidence; risk:'LOW'|'MEDIUM'|'HIGH'; removesAi:boolean; accepted?:boolean; dependsOn?:string[]; diff:string; }
 export interface RunMetrics { calls:number; tokens:number; cost:number; latencyMs:number; quality:MetricQuality; }
 export interface AgentEvent { id:string; label:string; status:'queued'|'active'|'complete'|'blocked'; detail:string; }
-export interface Run { id:string; repositoryUrl:string; status:'idle'|'analyzing'|'ready'|'optimizing'|'complete'|'failed'; approvalStatus:'pending'|'approved'; createdAt:string; usages:AiUsage[]; candidates:Candidate[]; before:RunMetrics; after?:RunMetrics; events:AgentEvent[]; }
+export type RunStatus='created'|'preparing'|'analyzing'|'baseline_running'|'planning'|'optimizing'|'validating'|'reviewing'|'awaiting_approval'|'publishing'|'completed'|'failed'|'cancelled'|'fallback'|'idle'|'ready'|'complete';
+export type RunMode='trueforge'|'local-deterministic'|'trueforge-failed';
+export interface Run { id:string; repositoryUrl:string; status:RunStatus; approvalStatus:'pending'|'approved'; createdAt:string; updatedAt?:string; stage?:string; mode?:RunMode; failureReason?:string; fallbackReason?:string; activeCandidateId?:string; trueForgeSessionId?:string; trueForgeTurnId?:string; activeSandboxId?:string; retryCount?:number; startedAt?:string; completedAt?:string; usages:AiUsage[]; candidates:Candidate[]; before:RunMetrics; after?:RunMetrics; events:AgentEvent[]; }
 
 export type CaptureLevel = 'metadata_only' | 'redacted' | 'full_local_only';
 export type EvaluatorType = 'exact' | 'json' | 'schema' | 'numeric_tolerance' | 'subset' | 'regex' | 'snapshot' | 'http_assertion';

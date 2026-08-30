@@ -919,7 +919,23 @@ async function handleRequest(request, response, next, database, config = {}) {
             : null,
           body.validationEvidence !== undefined
             ? JSON.stringify(assessValidationGate(body.validationEvidence))
-            : null,
+            : body.validation !== undefined &&
+                body.validation &&
+                typeof body.validation === "object" &&
+                ["PASS", "FAIL", "NOT_VERIFIED"].includes(
+                  body.validation.state,
+                ) &&
+                typeof body.validation.canPublish === "boolean" &&
+                body.validation.checks &&
+                typeof body.validation.checks === "object" &&
+                Array.isArray(body.validation.reasons)
+              ? JSON.stringify({
+                  state: body.validation.state,
+                  canPublish: body.validation.canPublish,
+                  checks: body.validation.checks,
+                  reasons: body.validation.reasons,
+                })
+              : null,
           body.patchFiles !== undefined
             ? JSON.stringify(body.patchFiles)
             : null,

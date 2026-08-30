@@ -677,7 +677,7 @@ export default function App() {
         );
       })
       .catch(() => localStorage.removeItem("forgeoptimizer:last-run-id"));
-    return () => unsubscribe;
+    return () => unsubscribe();
   }, []);
   function setAccepted(id: string, accepted: boolean) {
     setRun((c) => {

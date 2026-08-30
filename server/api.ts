@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { canTransition } from '../src/runState.ts';
-import { createOptimizationBranch, createPullRequest, inspectRepository } from './github.ts';
+import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectRepository } from './github.ts';
 import { assessValidationGate } from '../src/validation.ts';
 import { buildOptimizationReport } from '../src/report.ts';
 
@@ -191,6 +191,7 @@ async function handleRequest(request, response, next, database) {
     if (request.method === 'GET' && segments.length === 2) return json(response, 200, runRecords(database));
     const id = segments[2];
     if (!id) return json(response, 400, { error: 'Run ID is required' });
+    if (request.method === 'POST' && segments[3] === 'github-commit') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); if (run.approvalStatus !== 'approved') return json(response, 409, { error: 'Explicit approval is required before committing optimization changes' }); if (!run.branch) return json(response, 409, { error: 'Optimization branch must be created first' }); const body = await readBody(request); const commit = await commitOptimizationChanges(body.repositoryUrl ?? run.repositoryUrl, run.branch.optimizationBranch, body.files, body.message); const branch = { ...run.branch, resultingCommitSha: commit.commitSha }; database.prepare('UPDATE optimization_runs SET branch_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(branch), new Date().toISOString(), id); return json(response, 201, { ...runRecord(database, id), commit }); }
     if (request.method === 'GET' && segments.length === 3) { const run = runRecord(database, id); return run ? json(response, 200, run) : json(response, 404, { error: 'Run not found' }); }
     if (request.method === 'GET' && segments[3] === 'candidates') { const run = runRecord(database, id); return run ? json(response, 200, { candidates: run.candidates }) : json(response, 404, { error: 'Run not found' }); }
     if (request.method === 'GET' && segments[3] === 'results') { const run = runRecord(database, id); return run ? json(response, 200, { ...run, reportReady: Boolean(run.after || run.baseline || run.evaluations || run.plan) }) : json(response, 404, { error: 'Run not found' }); }

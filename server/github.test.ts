@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createOptimizationBranch, createPullRequest, inspectRepository } from './github';
+import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectRepository } from './github';
 
 describe('server-side GitHub workflow',()=>{
   afterEach(()=>{vi.unstubAllGlobals();delete process.env.GITHUB_TOKEN;});
@@ -25,5 +25,19 @@ describe('server-side GitHub workflow',()=>{
     vi.stubGlobal('fetch',fetchMock);
     await expect(createPullRequest('https://github.com/acme/app','forgeoptimizer/run-abcd','main','ForgeOptimizer report','summary')).resolves.toMatchObject({number:4,url:'https://github.com/acme/app/pull/4'});
     expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({head:'forgeoptimizer/run-abcd',base:'main'});
+  });
+
+  it('commits reviewed files through a constrained optimization branch',async()=>{
+    process.env.GITHUB_TOKEN='server-secret';
+    const fetchMock=vi.fn()
+      .mockResolvedValueOnce(Response.json({object:{sha:'a'.repeat(40)}}))
+      .mockResolvedValueOnce(Response.json({tree:{sha:'tree-base'}}))
+      .mockResolvedValueOnce(Response.json({sha:'tree-next'}))
+      .mockResolvedValueOnce(Response.json({sha:'b'.repeat(40)}))
+      .mockResolvedValueOnce(Response.json({}));
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(commitOptimizationChanges('https://github.com/acme/app','forgeoptimizer/run-abcd',[{path:'src/app.ts',content:'export const ok = true;'}],'optimize: apply app patch')).resolves.toMatchObject({commitSha:'b'.repeat(40),changedFiles:['src/app.ts']});
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({message:'optimize: apply app patch',parents:['a'.repeat(40)]});
+    await expect(commitOptimizationChanges('https://github.com/acme/app','forgeoptimizer/run-abcd',[{path:'../secrets.env',content:'no'}],'bad')).rejects.toThrow('Unsafe optimization file path');
   });
 });

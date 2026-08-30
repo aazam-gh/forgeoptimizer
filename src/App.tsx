@@ -18,7 +18,11 @@ import {
   X,
 } from "lucide-react";
 import type { Candidate, Run } from "./domain";
-import { analyzeFixture, applyCandidates } from "./analyzer";
+import {
+  analyzeFixture,
+  analyzeRepositorySource,
+  applyCandidates,
+} from "./analyzer";
 import { runTrueForgeOrchestrator } from "./trueforge";
 import {
   appendPersistedEvent,
@@ -41,6 +45,7 @@ import {
   transitionPersistedRun,
   updatePersistedCandidateDecision,
   updatePersistedRun,
+  readPersistedRepositorySource,
 } from "./runApi";
 import {
   baselineFromRun,
@@ -213,7 +218,11 @@ export default function App() {
       Number.isFinite(configuredTraffic) && configuredTraffic >= 0
         ? configuredTraffic
         : requestsPerDay;
-    const result = analyzeFixture();
+    const result = url.startsWith("https://github.com/")
+      ? analyzeRepositorySource(
+          (await readPersistedRepositorySource(url, branch)).files,
+        )
+      : analyzeFixture();
     const policy = defaultOptimizationPolicy;
     const plan = buildOptimizationPlan("pending", result.candidates, policy);
     const draft = {

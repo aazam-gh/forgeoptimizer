@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { canTransition } from '../src/runState.ts';
-import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectCommit, inspectRepository, listRepositoryBranches } from './github.ts';
+import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectCommit, inspectRepository, listRepositoryBranches, readRepositorySource } from './github.ts';
 import { assessValidationGate, approveValidationGate } from '../src/validation.ts';
 import { buildOptimizationReport } from '../src/report.ts';
 
@@ -271,6 +271,7 @@ async function handleRequest(request, response, next, database, config = {}) {
     if (request.method === 'POST' && pathname === '/api/github/repository') { const body = await readBody(request); return json(response, 200, await inspectRepository(body.repositoryUrl, body.branch)); }
     if (request.method === 'POST' && pathname === '/api/github/branches') { const body = await readBody(request); return json(response, 200, { branches: await listRepositoryBranches(body.repositoryUrl) }); }
     if (request.method === 'POST' && pathname === '/api/github/commit') { const body = await readBody(request); return json(response, 200, await inspectCommit(body.repositoryUrl, body.commitSha)); }
+    if (request.method === 'POST' && pathname === '/api/github/source') { const body = await readBody(request); return json(response, 200, { files: await readRepositorySource(body.repositoryUrl, body.branch, Math.min(200, Math.max(1, Number(body.maxFiles) || 200))) }); }
     if (request.method === 'POST' && pathname === '/api/github/branch') return json(response, 409, { error: 'Run-scoped approval is required before creating an optimization branch' });
     if (request.method === 'POST' && pathname === '/api/github/pull-request') return json(response, 409, { error: 'Run-scoped approval is required before creating a pull request' });
     if (segments[1] === 'candidates') {

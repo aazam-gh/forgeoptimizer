@@ -95,6 +95,15 @@ export function inspectRepositoryCommit(
     { method: "POST", body: JSON.stringify({ repositoryUrl, commitSha }) },
   );
 }
+export function readPersistedRepositorySource(
+  repositoryUrl: string,
+  branch?: string,
+): Promise<{ files: { path: string; content: string }[] }> {
+  return request("/api/github/source", {
+    method: "POST",
+    body: JSON.stringify({ repositoryUrl, branch }),
+  });
+}
 export function listPersistedRuns(): Promise<PersistedRun[]> {
   return request<PersistedRun[]>("/api/runs");
 }

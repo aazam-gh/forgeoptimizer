@@ -1,7 +1,7 @@
 import type { AgentEvent } from './domain';
-export const trueForgeConfig={url:import.meta.env.VITE_TRUEFORGE_URL??'http://localhost:8790',apiKey:import.meta.env.VITE_TRUEFORGE_API_KEY??'',model:import.meta.env.VITE_TRUEFORGE_MODEL??'openai/gpt-4.1-mini',enabled:Boolean(import.meta.env.VITE_TRUEFORGE_API_KEY)};
+export const trueForgeConfig={url:import.meta.env.VITE_TRUEFORGE_URL??'http://localhost:8790',model:import.meta.env.VITE_TRUEFORGE_MODEL??'openai/gpt-4.1-mini',enabled:false};
 type TrueForgeSession={id:string;status?:string};
-async function trueForgeFetch<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(`${trueForgeConfig.url.replace(/\/$/,'')}/api/v1${path}`,{...init,headers:{'Content-Type':'application/json',...(trueForgeConfig.apiKey?{Authorization:`Bearer ${trueForgeConfig.apiKey}`}:{}) ,...init?.headers}});if(!response.ok)throw new Error(`TrueForge ${response.status}: ${await response.text()}`);return response.json() as Promise<T>;}
+async function trueForgeFetch<T>(path:string,init?:RequestInit):Promise<T>{const response=await fetch(`${trueForgeConfig.url.replace(/\/$/,'')}/api/v1${path}`,{...init,headers:{'Content-Type':'application/json',...init?.headers}});if(!response.ok)throw new Error(`TrueForge ${response.status}: ${await response.text()}`);return response.json() as Promise<T>;}
 export async function getTrueForgeCapabilities(){return trueForgeFetch<Record<string,unknown>>('/capabilities');}
 export async function runTrueForgeOrchestrator(repositoryUrl:string,onEvent:(event:AgentEvent)=>void){
  if(!trueForgeConfig.enabled)return{mode:'local-deterministic' as const};

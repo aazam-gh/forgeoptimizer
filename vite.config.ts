@@ -4,7 +4,7 @@ import { apiPlugin } from './server/api.ts';
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
   return {
-    plugins: [react(), apiPlugin()],
+    plugins: [react(), apiPlugin({ trueForgeUrl: env.VITE_TRUEFORGE_URL, trueForgeApiKey: env.TRUEFORGE_API_KEY })],
     server: {
       proxy: {
         '/api/trueforge': {

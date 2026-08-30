@@ -1,6 +1,6 @@
 export type Category = 'Deterministic replacement' | 'Duplicate calls' | 'Context reduction' | 'Cheaper model' | 'Parallelize';
 export type Confidence = 'HIGH' | 'MEDIUM' | 'LOW';
-export type MetricQuality = 'MEASURED' | 'ESTIMATED' | 'INFERRED';
+export type MetricQuality = 'MEASURED' | 'ESTIMATED' | 'INFERRED' | 'NOT_VERIFIED';
 export interface AiUsage { id:string; file:string; line:number; functionName:string; provider:string; model?:string; purpose:string; inputTokens:number; outputTokens:number; quality:MetricQuality; }
 export interface Candidate { id:string; usageId:string; file:string; line:number; category:Category; title:string; finding:string; recommendation:string; savingsPercent:number; confidence:Confidence; risk:'LOW'|'MEDIUM'|'HIGH'; removesAi:boolean; changeType?:'code'|'model'|'prompt'|'dependency'|'ai_removal'; recommendedModel?:string; requiresBenchmark?:boolean; accepted?:boolean; dependsOn?:string[]; diff:string; frequencyPerDay?:number; testCoverage?:number; blastRadius?:number; complexity?:number; measurementQuality?:MetricQuality; }
 export interface RunMetrics { calls:number; tokens:number; cost:number; latencyMs:number; quality:MetricQuality; }

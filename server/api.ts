@@ -103,6 +103,7 @@ function runRecords(database) {
 function createRun(database, input) {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
+  if (input.id && database.prepare('SELECT id FROM optimization_runs WHERE id = ?').get(input.id)) return runRecord(database, input.id);
   database.prepare('INSERT INTO optimization_runs (id, repository_url, source_branch, source_commit_sha, requests_per_day, scenarios_json, status, mode, policy_json, candidates_json, usages_json, before_json, approval_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, input.repositoryUrl ?? 'fixture://inefficient-ai-app', input.sourceBranch ?? null, input.sourceCommitSha ?? null, input.requestsPerDay ?? null, JSON.stringify(input.scenarios ?? []), 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), JSON.stringify(input.usages ?? []), JSON.stringify(input.before ?? {}), input.approvalStatus ?? 'pending', now, now);
   return runRecord(database, id);
 }
@@ -165,17 +166,34 @@ function findCandidate(database, candidateId) {
   return null;
 }
 
-function apiPlugin() {
+function proxyTarget(config) {
+  return config.trueForgeUrl ?? process.env.VITE_TRUEFORGE_URL ?? 'http://localhost:8790';
+}
+
+async function proxyTrueForge(request, response, config) {
+  const target = `${proxyTarget(config).replace(/\/$/, '')}${(request.url ?? '/api/trueforge').replace(/^\/api\/trueforge/, '/api/v1')}`;
+  const body = ['GET', 'HEAD'].includes(request.method ?? 'GET') ? undefined : JSON.stringify(await readBody(request));
+  const upstream = await fetch(target, { method: request.method, body, headers: { 'Content-Type': 'application/json', ...(config.trueForgeApiKey ? { Authorization: `Bearer ${config.trueForgeApiKey}` } : {}) } });
+  response.statusCode = upstream.status;
+  upstream.headers.forEach((value, key) => { if (['content-length', 'connection', 'transfer-encoding'].includes(key)) return; response.setHeader(key, value); });
+  if (!upstream.body) { response.end(await upstream.text()); return; }
+  const reader = upstream.body.getReader();
+  while (true) { const chunk = await reader.read(); if (chunk.done) break; response.write(Buffer.from(chunk.value)); }
+  response.end();
+}
+
+function apiPlugin(config = {}) {
   const database = openDatabase();
   return {
     name: 'forgeoptimizer-api',
-    configureServer(server) { server.middlewares.use(async (request, response, next) => { await handleRequest(request, response, next, database); }); },
-    configurePreviewServer(server) { server.middlewares.use(async (request, response, next) => { await handleRequest(request, response, next, database); }); },
+    configureServer(server) { server.middlewares.use(async (request, response, next) => { await handleRequest(request, response, next, database, config); }); },
+    configurePreviewServer(server) { server.middlewares.use(async (request, response, next) => { await handleRequest(request, response, next, database, config); }); },
   };
 }
 
-async function handleRequest(request, response, next, database) {
+async function handleRequest(request, response, next, database, config = {}) {
   const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+  if (pathname.startsWith('/api/trueforge')) return proxyTrueForge(request, response, config);
   if (!pathname.startsWith('/api/runs') && !pathname.startsWith('/api/candidates') && !pathname.startsWith('/api/github') && !pathname.startsWith('/api/repositories')) return next();
   try {
     const segments = pathname.split('/').filter(Boolean);
@@ -210,6 +228,7 @@ async function handleRequest(request, response, next, database) {
       return;
     }
     if (request.method === 'POST' && segments[3] === 'events') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); const event = await readBody(request); if (!event.id || !event.label || !event.status || !event.detail) return json(response, 400, { error: 'Event id, label, status, and detail are required' }); appendEvent(database, id, event); return json(response, 201, runRecord(database, id)); }
+    if (request.method === 'POST' && segments[3] === 'state') { const body = await readBody(request); if (!body.status) return json(response, 400, { error: 'Run status is required' }); return json(response, 200, updateRun(database, id, body)); }
     if (request.method === 'POST' && segments[3] === 'start') return json(response, 200, updateRun(database, id, { status: 'preparing' }));
     if (request.method === 'POST' && segments[3] === 'cancel') return json(response, 200, updateRun(database, id, { status: 'cancelled' }));
     if (request.method === 'POST' && segments[3] === 'approve') { const run = runRecord(database, id); if (!run) return json(response, 404, { error: 'Run not found' }); if (!run.validation) return json(response, 409, { error: 'Validation gate is not complete' }); const validation = approveValidationGate(run.validation); if (!validation.canPublish) return json(response, 409, { error: 'Validation gate is not complete', validation }); database.prepare('UPDATE optimization_runs SET validation_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(validation), new Date().toISOString(), id); return json(response, 200, updateRun(database, id, { approvalStatus: 'approved' })); }

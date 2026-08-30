@@ -29,6 +29,16 @@ describe('TrueForge session and turn integration',()=>{
     expect(events.some(event=>event.status==='complete')).toBe(true);
   });
 
+  it('records retry attempts and measured stream usage without exposing deltas',async()=>{
+    trueForgeConfig.enabled=true;
+    const fetchMock=vi.fn().mockRejectedValueOnce(new Error('temporary outage')).mockResolvedValueOnce(Response.json({id:'session-retry'})).mockResolvedValueOnce(streamResponse([{type:'turn.created',id:'turn-retry'},{type:'usage',usage:{input_tokens:12,output_tokens:8}},{type:'turn.done'}]));
+    vi.stubGlobal('fetch',fetchMock);
+    const events=[] as {label:string;status:string;detail:string}[];
+    const result=await runTrueForgeOrchestrator('fixture://app',event=>events.push(event),{maxRetries:1});
+    expect(result).toMatchObject({mode:'trueforge',retryCount:1,usage:{calls:1,tokens:20,quality:'MEASURED'}});
+    expect(events).toContainEqual({id:'tf-retry-1',label:'TrueForge retry',status:'active',detail:'Retrying session request (attempt 2)'});
+  });
+
   it('ignores unsafe structured patch files while retaining the final result',async()=>{
     trueForgeConfig.enabled=true;
     vi.stubGlobal('fetch',vi.fn().mockResolvedValueOnce(Response.json({id:'session-2'})).mockResolvedValueOnce(streamResponse([{type:'model.message',content:'{"files":[{"path":"../secrets.env","content":"no"}]}'},{type:'turn.done'}])));

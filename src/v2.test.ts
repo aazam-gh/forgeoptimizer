@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { analyzeFixture } from './analyzer';
-import { baselineFromRun, buildOptimizationPlan, defaultScenario, evaluateCase, fingerprintRequest, instrumentInvocation, projectSavings, redactSecrets, safeMetadata } from './v2';
+import { baselineFromRun, buildOptimizationPlan, defaultOptimizationPolicy, defaultScenario, evaluateCase, fingerprintRequest, instrumentInvocation, projectSavings, redactSecrets, safeMetadata } from './v2';
 
 describe('V2 safety and evidence primitives', () => {
   it('redacts common provider secrets and fingerprints requests without storing raw prompts', () => {
@@ -46,6 +46,16 @@ describe('V2 safety and evidence primitives', () => {
     expect(plan.steps.find(step => step.candidateId === 'c2')?.dependsOn).toEqual(['step-c1']);
     const projection = projectSavings(result.before, { ...result.before, cost: result.before.cost / 2 }, 100);
     expect(projection.monthlySavings).toBeGreaterThan(projection.dailySavings);
+  });
+
+  it('excludes cheaper-model candidates when model changes are forbidden', () => {
+    const result = analyzeFixture();
+    const policy = { ...defaultOptimizationPolicy, allowModelChanges: false };
+    const blockedPlan = buildOptimizationPlan('run-policy-blocked', result.candidates, policy);
+    expect(blockedPlan.steps.some(step => step.candidateId === 'c5')).toBe(false);
+
+    const allowedPlan = buildOptimizationPlan('run-policy-allowed', result.candidates, { ...policy, allowModelChanges: true });
+    expect(allowedPlan.steps.some(step => step.candidateId === 'c5')).toBe(true);
   });
 
   it('fails malformed evaluators safely and enforces medium risk caps', () => {

@@ -276,7 +276,9 @@ function sanitizeServerValue(value, captureLevel, depth = 0, seen = new Set()) {
   let result;
   if (Array.isArray(value))
     result = value.map((item) =>
-      sanitizeServerValue(item, captureLevel, depth + 1, seen),
+      typeof item === "string" && captureLevel !== "full_local_only"
+        ? "[REDACTED]"
+        : sanitizeServerValue(item, captureLevel, depth + 1, seen),
     );
   else
     result = Object.fromEntries(
@@ -818,6 +820,11 @@ async function handleBoundGithubRequest(
 
 async function handleRequest(request, response, next, database, config = {}) {
   const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+  if (
+    pathname.startsWith("/api/trueforge") &&
+    !authorizeGithubInspection(request, response)
+  )
+    return;
   if (pathname.startsWith("/api/trueforge"))
     return proxyTrueForge(request, response, config);
   if (

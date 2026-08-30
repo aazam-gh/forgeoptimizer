@@ -188,7 +188,11 @@ function sanitize(
     );
     result = error;
   } else if (Array.isArray(value))
-    result = value.map((item) => sanitize(item, walk, depth + 1));
+    result = value.map((item) =>
+      typeof item === "string"
+        ? "[REDACTED]"
+        : sanitize(item, walk, depth + 1),
+    );
   else
     result = Object.fromEntries(
       Object.entries(value).map(([key, item]) => [

@@ -18,6 +18,8 @@ function openDatabase() {
     CREATE TABLE IF NOT EXISTS optimization_runs (
       id TEXT PRIMARY KEY,
       repository_url TEXT NOT NULL,
+      source_branch TEXT,
+      source_commit_sha TEXT,
       status TEXT NOT NULL,
       mode TEXT NOT NULL,
       policy_json TEXT NOT NULL,
@@ -49,6 +51,8 @@ function openDatabase() {
     );
   `);
   try { database.exec('ALTER TABLE optimization_runs ADD COLUMN plan_json TEXT'); } catch { /* already migrated */ }
+  try { database.exec('ALTER TABLE optimization_runs ADD COLUMN source_branch TEXT'); } catch { /* already migrated */ }
+  try { database.exec('ALTER TABLE optimization_runs ADD COLUMN source_commit_sha TEXT'); } catch { /* already migrated */ }
   try { database.exec("ALTER TABLE optimization_runs ADD COLUMN usages_json TEXT NOT NULL DEFAULT '[]'"); } catch { /* already migrated */ }
   try { database.exec("ALTER TABLE optimization_runs ADD COLUMN before_json TEXT NOT NULL DEFAULT '{}'"); } catch { /* already migrated */ }
   try { database.exec("ALTER TABLE optimization_runs ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'pending'"); } catch { /* already migrated */ }
@@ -81,7 +85,7 @@ function runRecord(database, id) {
   const run = database.prepare('SELECT * FROM optimization_runs WHERE id = ?').get(id);
   if (!run) return null;
   const events = database.prepare('SELECT id, label, status, detail, created_at AS createdAt FROM agent_events WHERE run_id = ? ORDER BY created_at').all(id);
-  return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), plan: run.plan_json ? JSON.parse(run.plan_json) : undefined, branch: run.branch_json ? JSON.parse(run.branch_json) : undefined, pullRequest: run.pull_request_json ? JSON.parse(run.pull_request_json) : undefined, baseline: run.baseline_json ? JSON.parse(run.baseline_json) : undefined, evaluations: run.evaluations_json ? JSON.parse(run.evaluations_json) : undefined, after: run.after_json ? JSON.parse(run.after_json) : undefined, projection: run.projection_json ? JSON.parse(run.projection_json) : undefined, candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
+  return { id: run.id, repositoryUrl: run.repository_url, sourceBranch: run.source_branch ?? undefined, sourceCommitSha: run.source_commit_sha ?? undefined, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), plan: run.plan_json ? JSON.parse(run.plan_json) : undefined, branch: run.branch_json ? JSON.parse(run.branch_json) : undefined, pullRequest: run.pull_request_json ? JSON.parse(run.pull_request_json) : undefined, baseline: run.baseline_json ? JSON.parse(run.baseline_json) : undefined, evaluations: run.evaluations_json ? JSON.parse(run.evaluations_json) : undefined, after: run.after_json ? JSON.parse(run.after_json) : undefined, projection: run.projection_json ? JSON.parse(run.projection_json) : undefined, candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
 }
 
 function runRecords(database) {
@@ -91,7 +95,7 @@ function runRecords(database) {
 function createRun(database, input) {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
-  database.prepare('INSERT INTO optimization_runs (id, repository_url, status, mode, policy_json, candidates_json, usages_json, before_json, approval_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, input.repositoryUrl ?? 'fixture://inefficient-ai-app', 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), JSON.stringify(input.usages ?? []), JSON.stringify(input.before ?? {}), input.approvalStatus ?? 'pending', now, now);
+  database.prepare('INSERT INTO optimization_runs (id, repository_url, source_branch, source_commit_sha, status, mode, policy_json, candidates_json, usages_json, before_json, approval_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, input.repositoryUrl ?? 'fixture://inefficient-ai-app', input.sourceBranch ?? null, input.sourceCommitSha ?? null, 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), JSON.stringify(input.usages ?? []), JSON.stringify(input.before ?? {}), input.approvalStatus ?? 'pending', now, now);
   return runRecord(database, id);
 }
 

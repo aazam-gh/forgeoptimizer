@@ -300,6 +300,17 @@ function sanitizeServerValue(value, captureLevel, depth = 0, seen = new Set()) {
   return result;
 }
 
+function normalizeCallSite(value) {
+  if (!value || typeof value !== "object") return { file: "unknown" };
+  const file = typeof value.file === "string" ? value.file.slice(0, 1000) : "unknown";
+  const line = Number.isInteger(value.line) && value.line > 0 ? value.line : undefined;
+  const functionName =
+    typeof value.functionName === "string"
+      ? value.functionName.slice(0, 500)
+      : undefined;
+  return { file, ...(line ? { line } : {}), ...(functionName ? { functionName } : {}) };
+}
+
 function runRecord(database, id) {
   const run = database
     .prepare("SELECT * FROM optimization_runs WHERE id = ?")
@@ -468,7 +479,7 @@ function appendInvocation(database, runId, invocation) {
       runId,
       invocation.provider,
       invocation.model ?? null,
-      JSON.stringify(invocation.callSite ?? {}),
+      JSON.stringify(normalizeCallSite(invocation.callSite)),
       invocation.inputTokens ?? null,
       invocation.outputTokens ?? null,
       invocation.latencyMs ?? null,
@@ -769,6 +780,12 @@ async function handleBoundGithubRequest(
     json(response, 409, {
       error:
         "A resulting optimization commit is required before creating a pull request",
+    });
+    return true;
+  }
+  if (body.approved !== true) {
+    json(response, 409, {
+      error: "Explicit approval is required before creating a pull request",
     });
     return true;
   }

@@ -67,7 +67,7 @@ const MAX_METADATA_DEPTH = 8;
 const MAX_METADATA_NODES = 500;
 const MAX_METADATA_STRING_LENGTH = 4000;
 const secretField =
-  /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth|prompt|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt|content|contents|messages?|input|output)$/i;
+  /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth|prompt(?:[-_]?text)?|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt|content|contents|messages?|input|output)$/i;
 const credentialField =
   /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth)$/i;
 const metadataFields =

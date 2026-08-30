@@ -224,25 +224,43 @@ function json(response, status, value) {
 }
 
 function readBody(request) {
+  const maxBodyBytes = 2 * 1024 * 1024;
   return new Promise((resolve, reject) => {
     let body = "";
+    let settled = false;
     request.setEncoding("utf8");
     request.on("data", (chunk) => {
+      if (settled) return;
       body += chunk;
+      if (Buffer.byteLength(body, "utf8") > maxBodyBytes) {
+        settled = true;
+        const error = new Error("Request body exceeds the 2 MiB limit");
+        error.statusCode = 413;
+        reject(error);
+        request.destroy();
+      }
     });
     request.on("end", () => {
+      if (settled) return;
       try {
+        settled = true;
         resolve(body ? JSON.parse(body) : {});
       } catch (error) {
+        settled = true;
         reject(error);
       }
     });
-    request.on("error", reject);
+    request.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        reject(error);
+      }
+    });
   });
 }
 
 const serverSecretKey =
-  /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth|prompt|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt|content|contents|messages?|input|output)$/i;
+  /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth|prompt(?:[-_]?text)?|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt|content|contents|messages?|input|output)$/i;
 const serverMetadataKeys =
   /^(status|finish[-_]?reason|usage|provider|model|request|response|latency(?:ms)?|error|cache[-_]?hit|input[-_]?tokens|output[-_]?tokens|content[-_]?type)$/i;
 const serverSecretValue =
@@ -510,7 +528,7 @@ function streamEvents(response, database, runId) {
   response.on("close", () => clearInterval(interval));
 }
 
-function updateRun(database, id, patch) {
+function updateRun(database, id, patch, allowApprovalStatus = false) {
   const current = database
     .prepare("SELECT * FROM optimization_runs WHERE id = ?")
     .get(id);
@@ -535,7 +553,9 @@ function updateRun(database, id, patch) {
     .run(
       next.status,
       next.mode,
-      patch.approvalStatus ?? current.approval_status,
+      allowApprovalStatus
+        ? (patch.approvalStatus ?? current.approval_status)
+        : current.approval_status,
       new Date().toISOString(),
       next.failureReason ?? null,
       next.fallbackReason ?? null,
@@ -579,9 +599,18 @@ function authorizeGithubInspection(request, response) {
   }
   const origin = request.headers.origin;
   const host = request.headers.host;
-  if (origin && host && !origin.endsWith(`://${host}`)) {
-    json(response, 403, { error: "Cross-origin GitHub access is not allowed" });
-    return false;
+  if (origin && host) {
+    try {
+      if (new URL(origin).host !== host) {
+        json(response, 403, {
+          error: "Cross-origin GitHub access is not allowed",
+        });
+        return false;
+      }
+    } catch {
+      json(response, 403, { error: "Invalid request origin" });
+      return false;
+    }
   }
   return true;
 }
@@ -1044,6 +1073,10 @@ async function handleRequest(request, response, next, database, config = {}) {
       const body = await readBody(request);
       if (!body.status)
         return json(response, 400, { error: "Run status is required" });
+      if (body.approvalStatus !== undefined)
+        return json(response, 400, {
+          error: "Approval must use the dedicated approval endpoint",
+        });
       return respondWithUpdatedRun(response, database, id, body);
     }
     if (request.method === "POST" && segments[3] === "start")
@@ -1079,7 +1112,7 @@ async function handleRequest(request, response, next, database, config = {}) {
       return json(
         response,
         200,
-        updateRun(database, id, { approvalStatus: "approved" }),
+        updateRun(database, id, { approvalStatus: "approved" }, true),
       );
     }
     if (request.method === "POST" && segments[3] === "github-branch") {
@@ -1223,7 +1256,7 @@ async function handleRequest(request, response, next, database, config = {}) {
     }
     return json(response, 404, { error: "Unsupported run endpoint" });
   } catch (error) {
-    return json(response, 400, {
+    return json(response, error.statusCode ?? 400, {
       error: error instanceof Error ? error.message : "Invalid request",
     });
   }

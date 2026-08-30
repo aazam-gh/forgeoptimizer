@@ -25,9 +25,10 @@ describe("V2 safety and evidence primitives", () => {
     expect(
       safeMetadata(
         {
-          response: {
-            prompt: "private prompt",
-            contentType: "text/plain",
+        response: {
+          prompt: "private prompt",
+          promptText: "private prompt text",
+          contentType: "text/plain",
             inputTokens: 12,
             apiKey: "sk-test_123456789012",
           },
@@ -37,6 +38,7 @@ describe("V2 safety and evidence primitives", () => {
     ).toEqual({
       response: {
         prompt: "[REDACTED]",
+        promptText: "[REDACTED]",
         contentType: "text/plain",
         inputTokens: 12,
         apiKey: "[REDACTED]",

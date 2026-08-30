@@ -40,3 +40,5 @@ external integrations are live.
 3. Keep `TRUEFORGE_API_KEY` server-only; set `VITE_TRUEFORGE_PROXY_ENABLED=true` to enable the proxy path.
 4. Run `pnpm dev` and open `http://localhost:5188`.
 5. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm lint`.
+
+The V2 development server includes a local SQLite run store at `.data/forgeoptimizer.sqlite`. Its first API boundary is `POST /api/runs`, `GET /api/runs/:id`, `POST /api/runs/:id/start`, `POST /api/runs/:id/cancel`, and `GET /api/runs/:id/events`. This persists safe orchestration state and agent events; target repositories are not executed by this host-side API.

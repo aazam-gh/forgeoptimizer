@@ -29,6 +29,8 @@ pnpm build
 
 Open the Vite URL and click **Analyze repository**. The default fixture URL is ready to run.
 
+The local development server also exposes a SQLite-backed run API at `/api/runs`. Create a run with `POST /api/runs`, inspect it with `GET /api/runs/:id`, start or cancel it with `POST /api/runs/:id/start` and `POST /api/runs/:id/cancel`, and consume persisted agent events from `GET /api/runs/:id/events`. The database is created under `.data/` and is ignored by Git.
+
 ## TrueForge
 
 TrueForge is the intended orchestration runtime for the root Optimization Orchestrator. The browser calls a same-origin proxy in `src/trueforge.ts`; the Vite server keeps `TRUEFORGE_API_KEY` server-side and falls back explicitly to local deterministic analysis when the proxy is unavailable. Start the pinned local server with `npx @truefoundry/trueforge@0.1.4 --port 8790`, then configure `.env` from `.env.example`.

@@ -12,8 +12,9 @@ Optimize → Prove → PR**.
   provider-neutral invocation instrumentation, deterministic evaluators,
   explainable candidate scoring, dependency-aware plans, baseline identity,
   savings projections, and PR report generation.
-- `src/trueforge.ts` can create a real local TrueForge session when an API key is
-  configured; local deterministic mode remains the safe default.
+- `src/trueforge.ts` calls the same-origin `/api/trueforge` proxy when enabled;
+  the Vite server attaches the server-only key and falls back explicitly to
+  deterministic mode when the proxy is unavailable.
 - `docs/HACKATHON_DEMO.md` remains the stable V1 presentation path.
 
 ## Safety boundaries
@@ -34,8 +35,8 @@ external integrations are live.
 
 ## Local setup
 
-1. Run `npx @truefoundry/trueforge@latest --port 8790`.
+1. Run `npx @truefoundry/trueforge@0.1.4 --port 8790`.
 2. Copy `.env.example` to `.env`.
-3. Add a TrueForge API key only when the local server is configured for one.
+3. Keep `TRUEFORGE_API_KEY` server-only; set `VITE_TRUEFORGE_PROXY_ENABLED=true` to enable the proxy path.
 4. Run `pnpm dev` and open `http://localhost:5188`.
 5. Run `pnpm typecheck`, `pnpm test`, `pnpm build`, and `pnpm lint`.

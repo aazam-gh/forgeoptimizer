@@ -31,7 +31,7 @@ Open the Vite URL and click **Analyze repository**. The default fixture URL is r
 
 ## TrueForge
 
-TrueForge is the intended orchestration runtime for the root Optimization Orchestrator. The project keeps that boundary in `src/trueforge.ts`, with local deterministic analysis available when `VITE_TRUEFORGE_API_KEY` is not set. Start TrueForge locally with the current official quickstart (`npx @truefoundry/trueforge@latest`), then configure `.env` from `.env.example`.
+TrueForge is the intended orchestration runtime for the root Optimization Orchestrator. The browser calls a same-origin proxy in `src/trueforge.ts`; the Vite server keeps `TRUEFORGE_API_KEY` server-side and falls back explicitly to local deterministic analysis when the proxy is unavailable. Start the pinned local server with `npx @truefoundry/trueforge@0.1.4 --port 8790`, then configure `.env` from `.env.example`.
 
 Project Skills live under `skills/` and are designed for on-demand loading: repository mapping, LLM audit, deterministic replacement, cost analysis, benchmarking, and review. GitHub MCP is an extension point for public repository access; V1's included fixture keeps the demo safe and repeatable without cloning or executing untrusted code on the host.
 

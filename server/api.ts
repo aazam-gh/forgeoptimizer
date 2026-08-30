@@ -18,6 +18,9 @@ function openDatabase() {
       mode TEXT NOT NULL,
       policy_json TEXT NOT NULL,
       candidates_json TEXT NOT NULL,
+      usages_json TEXT NOT NULL DEFAULT '[]',
+      before_json TEXT NOT NULL DEFAULT '{}',
+      approval_status TEXT NOT NULL DEFAULT 'pending',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       failure_reason TEXT,
@@ -36,6 +39,9 @@ function openDatabase() {
     );
   `);
   try { database.exec('ALTER TABLE optimization_runs ADD COLUMN plan_json TEXT'); } catch { /* already migrated */ }
+  try { database.exec("ALTER TABLE optimization_runs ADD COLUMN usages_json TEXT NOT NULL DEFAULT '[]'"); } catch { /* already migrated */ }
+  try { database.exec("ALTER TABLE optimization_runs ADD COLUMN before_json TEXT NOT NULL DEFAULT '{}'"); } catch { /* already migrated */ }
+  try { database.exec("ALTER TABLE optimization_runs ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'pending'"); } catch { /* already migrated */ }
   return database;
 }
 
@@ -59,13 +65,13 @@ function runRecord(database, id) {
   const run = database.prepare('SELECT * FROM optimization_runs WHERE id = ?').get(id);
   if (!run) return null;
   const events = database.prepare('SELECT id, label, status, detail, created_at AS createdAt FROM agent_events WHERE run_id = ? ORDER BY created_at').all(id);
-  return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, policy: JSON.parse(run.policy_json), candidates: JSON.parse(run.candidates_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
+  return { id: run.id, repositoryUrl: run.repository_url, status: run.status, mode: run.mode, approvalStatus: run.approval_status, policy: JSON.parse(run.policy_json), candidates: JSON.parse(run.candidates_json), usages: JSON.parse(run.usages_json), before: JSON.parse(run.before_json), createdAt: run.created_at, updatedAt: run.updated_at, failureReason: run.failure_reason ?? undefined, fallbackReason: run.fallback_reason ?? undefined, trueForgeSessionId: run.trueforge_session_id ?? undefined, trueForgeTurnId: run.trueforge_turn_id ?? undefined, events };
 }
 
 function createRun(database, input) {
   const now = new Date().toISOString();
   const id = input.id ?? randomUUID();
-  database.prepare('INSERT INTO optimization_runs (id, repository_url, status, mode, policy_json, candidates_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(id, input.repositoryUrl ?? 'fixture://inefficient-ai-app', 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), now, now);
+  database.prepare('INSERT INTO optimization_runs (id, repository_url, status, mode, policy_json, candidates_json, usages_json, before_json, approval_status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(id, input.repositoryUrl ?? 'fixture://inefficient-ai-app', 'created', input.mode ?? 'local-deterministic', JSON.stringify(input.policy ?? {}), JSON.stringify(input.candidates ?? []), JSON.stringify(input.usages ?? []), JSON.stringify(input.before ?? {}), input.approvalStatus ?? 'pending', now, now);
   return runRecord(database, id);
 }
 

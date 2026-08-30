@@ -20,6 +20,8 @@ export interface EvaluationResult { caseId:string; baseline:unknown; candidate:u
 export interface OptimizationPlanStep { id:string; candidateId:string; title:string; dependsOn:string[]; score:number; scoreBreakdown?:Record<string,number>; status:'queued'|'running'|'passed'|'reverted'|'skipped'; }
 export interface OptimizationPlan { id:string; runId:string; createdAt:string; steps:OptimizationPlanStep[]; expectedSavingsPercent:number; risk:'LOW'|'MEDIUM'|'HIGH'; valid:boolean; validationErrors:string[]; }
 export interface OptimizationPolicy { maxBehavioralRisk:'low'|'medium'|'high'; minimumExpectedSavingsPercent:number; allowModelChanges:boolean; allowPromptChanges:boolean; allowAiRemoval:boolean; maxFilesPerPatch:number; requireAllTests:boolean; requireReviewAgent:boolean; }
+export interface OptimizationBudget { maxAgentCost:number; maxTrueForgeIterations:number; maxParallelSubAgents:number; maxCandidates:number; maxRuntimeMs:number; maxSandboxExecutions:number; }
+export interface BudgetLedger { agentCost:number; trueForgeIterations:number; activeSubAgents:number; candidates:number; runtimeMs:number; sandboxExecutions:number; }
 export interface CostProjection { measuredPerRun:number; requestsPerDay:number; dailySavings:number; monthlySavings:number; annualSavings:number; quality:'MEASURED'|'ESTIMATED'|'NOT_VERIFIED'; }
 export interface GitBranchRecord { baseBranch:string; baseCommitSha:string; optimizationBranch:string; resultingCommitSha?:string; }
 export interface PullRequestRecord { number?:number; url?:string; title:string; status:'not_created'|'awaiting_approval'|'created'|'merged'; branch:GitBranchRecord; }

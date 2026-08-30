@@ -11,8 +11,8 @@ export function redactSecrets(value:string):string{return secretPatterns.reduce(
 const MAX_METADATA_DEPTH=8;
 const MAX_METADATA_NODES=500;
 const MAX_METADATA_STRING_LENGTH=4000;
-const secretField=/^(authorization|proxy[-_]?authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|credential|prompt|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt)$/i;
-const credentialField=/^(authorization|proxy[-_]?authorization|api[-_]?key|access[-_]?token|refresh[-_]?token|id[-_]?token|secret|password|credential)$/i;
+const secretField=/^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth|prompt|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt|content|contents|messages?|input|output)$/i;
+const credentialField=/^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth)$/i;
 const metadataFields=/^(status|finish[-_]?reason|usage|provider|model|request|response|latency(?:ms)?|error|cache[-_]?hit|input[-_]?tokens|output[-_]?tokens|content[-_]?type)$/i;
 type MetadataWalk={ancestors:WeakSet<object>;nodes:number};
 function metadataKey(key:string):string{return key.replace(/([a-z])([A-Z])/g,'$1-$2');}

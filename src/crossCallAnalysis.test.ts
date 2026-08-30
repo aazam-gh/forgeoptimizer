@@ -13,4 +13,8 @@ describe('cross-call analysis',()=>{
     const findings=analyzeCrossCallUsage([invocation('a',{inputTokens:1000,retrievedTokens:800},'fp:a')]);
     expect(findings).toContainEqual(expect.objectContaining({kind:'context_dominates_cost',confidence:'MEDIUM'}));
   });
+  it('reads declared top-level context token breakdowns',()=>{
+    const result=analyzeCrossCallUsage([{...invocation('a'),inputTokens:1000,contextTokens:{retrieval:800}}]);
+    expect(result).toContainEqual(expect.objectContaining({kind:'context_dominates_cost'}));
+  });
 });

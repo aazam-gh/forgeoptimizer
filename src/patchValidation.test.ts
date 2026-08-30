@@ -11,4 +11,7 @@ describe('candidate patch validation',()=>{
     expect(result.valid).toBe(false);
     expect(result.errors).toEqual(expect.arrayContaining(['binary patches are not supported','unsafe changed file path: ../secrets.env']));
   });
+  it('rejects empty patches',()=>{
+    expect(validateCandidatePatch('')).toEqual({valid:false,changedFiles:[],errors:['patch must not be empty']});
+  });
 });

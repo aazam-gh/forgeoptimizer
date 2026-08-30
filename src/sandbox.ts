@@ -17,7 +17,7 @@ function normalizeResult(value:unknown,expectedScenarioId:string,expectedExitSta
 export const trueForgeSandboxExecutor:SandboxExecutor={
   async execute(request:SandboxExecutionRequest):Promise<ScenarioExecutionResult>{
     const task=`Inside the isolated TrueForge sandbox, checkout repository ${request.repositoryUrl} at exact commit ${request.commitSha}. Run only this scenario command from repository directory ${request.scenario.cwd}: ${request.scenario.command}. Do not execute on the host. Required environment names are: ${request.scenario.requiredEnv.join(', ')||'none'}. Return only JSON with scenarioId, status (passed, failed, timed_out, or not_verified), exitStatus, stdout, stderr, durationMs, and quality (MEASURED or NOT_VERIFIED). The expected exit status is ${request.scenario.expectedExitStatus}.`;
-    const result=await runTrueForgeOrchestrator(request.repositoryUrl,()=>undefined,{task});
+    const result=await runTrueForgeOrchestrator(request.repositoryUrl,()=>undefined,{task,timeoutMs:request.scenario.timeoutMs});
     if(result.mode!=='trueforge')return{scenarioId:request.scenario.id,status:'not_verified',quality:'NOT_VERIFIED',stderr:result.failureReason??'TrueForge sandbox unavailable'};
     const normalized=normalizeResult(result.finalResult,request.scenario.id,request.scenario.expectedExitStatus);
     return normalized??{scenarioId:request.scenario.id,status:'not_verified',quality:'NOT_VERIFIED',stderr:'TrueForge returned no validated scenario result'};

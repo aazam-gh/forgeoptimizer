@@ -2,7 +2,7 @@ export type PatchValidation={valid:boolean;changedFiles:string[];errors:string[]
 
 export function validateCandidatePatch(diff:string,maxFiles=15):PatchValidation{
   const errors:string[]=[];
-  if(!diff.trim())return{valid:true,changedFiles:[],errors:[]};
+  if(!diff.trim())return{valid:false,changedFiles:[],errors:['patch must not be empty']};
   if(diff.includes('GIT binary patch'))errors.push('binary patches are not supported');
   const changedFiles=[...diff.matchAll(/^\+\+\+ b\/(.+)$/gm)].map(match=>match[1].trim()).filter(file=>file!=='/dev/null');
   const uniqueFiles=[...new Set(changedFiles)];

@@ -52,6 +52,7 @@ function openDatabase() {
       error INTEGER,
       request_fingerprint TEXT,
       capture_level TEXT NOT NULL,
+      tool_calls_json TEXT,
       metadata_json TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
@@ -208,6 +209,11 @@ function openDatabase() {
   } catch {
     /* already migrated */
   }
+  try {
+    database.exec("ALTER TABLE ai_invocations ADD COLUMN tool_calls_json TEXT");
+  } catch {
+    /* already migrated */
+  }
   return database;
 }
 
@@ -233,6 +239,47 @@ function readBody(request) {
     });
     request.on("error", reject);
   });
+}
+
+const serverSecretKey =
+  /^(authorization|proxy[-_]?authorization|(?:x[-_]?|api[-_]?|client[-_]?|secret[-_]?|private[-_]?|signing[-_]?)key|access[-_]?token|refresh[-_]?token|id[-_]?token|session[-_]?token|secret|password|credential|auth|prompt|system[-_]?prompt|user[-_]?prompt|raw[-_]?prompt|content|contents|messages?|input|output)$/i;
+const serverMetadataKeys =
+  /^(status|finish[-_]?reason|usage|provider|model|request|response|latency(?:ms)?|error|cache[-_]?hit|input[-_]?tokens|output[-_]?tokens|content[-_]?type)$/i;
+const serverSecretValue =
+  /(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{20,}|Bearer\s+[A-Za-z0-9._-]+|AIza[A-Za-z0-9_-]{20,})/gi;
+
+function sanitizeServerValue(value, captureLevel, depth = 0, seen = new Set()) {
+  if (depth > 8) return "[TRUNCATED]";
+  if (typeof value === "string")
+    return value.replace(serverSecretValue, "[REDACTED]").slice(0, 4000);
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return "[Circular]";
+  seen.add(value);
+  let result;
+  if (Array.isArray(value))
+    result = value.map((item) =>
+      sanitizeServerValue(item, captureLevel, depth + 1, seen),
+    );
+  else
+    result = Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        serverSecretKey.test(key)
+          ? "[REDACTED]"
+          : sanitizeServerValue(item, captureLevel, depth + 1, seen),
+      ]),
+    );
+  seen.delete(value);
+  if (
+    captureLevel === "metadata_only" &&
+    result &&
+    typeof result === "object" &&
+    !Array.isArray(result)
+  )
+    return Object.fromEntries(
+      Object.entries(result).filter(([key]) => serverMetadataKeys.test(key)),
+    );
+  return result;
 }
 
 function runRecord(database, id) {
@@ -362,8 +409,6 @@ function createRun(database, input) {
       now,
       now,
     );
-  for (const invocation of input.usages ?? [])
-    appendInvocation(database, id, invocation);
   return runRecord(database, id);
 }
 
@@ -383,9 +428,22 @@ function appendEvent(database, runId, event) {
 }
 
 function appendInvocation(database, runId, invocation) {
+  const captureLevel = ["metadata_only", "redacted"].includes(
+    invocation.captureLevel,
+  )
+    ? invocation.captureLevel
+    : "metadata_only";
+  const metadata =
+    invocation.metadata && typeof invocation.metadata === "object"
+      ? sanitizeServerValue(invocation.metadata, captureLevel)
+      : {};
+  const toolCalls = Array.isArray(invocation.toolCalls)
+    ? sanitizeServerValue({ toolCalls: invocation.toolCalls }, captureLevel)
+        .toolCalls
+    : undefined;
   database
     .prepare(
-      "INSERT OR REPLACE INTO ai_invocations (id, run_id, provider, model, call_site_json, input_tokens, output_tokens, latency_ms, cost, cache_hit, retry_count, error, request_fingerprint, capture_level, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT OR REPLACE INTO ai_invocations (id, run_id, provider, model, call_site_json, input_tokens, output_tokens, latency_ms, cost, cache_hit, retry_count, error, request_fingerprint, capture_level, tool_calls_json, metadata_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .run(
       invocation.id ?? randomUUID(),
@@ -401,8 +459,9 @@ function appendInvocation(database, runId, invocation) {
       invocation.retryCount ?? null,
       invocation.error ? 1 : 0,
       invocation.requestFingerprint ?? null,
-      invocation.captureLevel,
-      JSON.stringify(invocation.metadata ?? {}),
+      captureLevel,
+      toolCalls ? JSON.stringify(toolCalls) : null,
+      JSON.stringify(metadata),
       new Date().toISOString(),
     );
 }
@@ -410,13 +469,16 @@ function appendInvocation(database, runId, invocation) {
 function invocationRecords(database, runId) {
   return database
     .prepare(
-      "SELECT id, provider, model, call_site_json AS callSite, input_tokens AS inputTokens, output_tokens AS outputTokens, latency_ms AS latencyMs, cost, cache_hit AS cacheHit, retry_count AS retryCount, error, request_fingerprint AS requestFingerprint, capture_level AS captureLevel, metadata_json AS metadata, created_at AS createdAt FROM ai_invocations WHERE run_id = ? ORDER BY created_at",
+      "SELECT id, provider, model, call_site_json AS callSite, input_tokens AS inputTokens, output_tokens AS outputTokens, latency_ms AS latencyMs, cost, cache_hit AS cacheHit, retry_count AS retryCount, error, request_fingerprint AS requestFingerprint, capture_level AS captureLevel, tool_calls_json AS toolCalls, metadata_json AS metadata, created_at AS createdAt FROM ai_invocations WHERE run_id = ? ORDER BY created_at",
     )
     .all(runId)
     .map((invocation) => ({
       ...invocation,
       callSite: JSON.parse(invocation.callSite),
       metadata: JSON.parse(invocation.metadata),
+      toolCalls: invocation.toolCalls
+        ? JSON.parse(invocation.toolCalls)
+        : undefined,
       cacheHit: Boolean(invocation.cacheHit),
       error: Boolean(invocation.error),
     }));

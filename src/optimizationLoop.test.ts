@@ -116,4 +116,26 @@ describe("bounded autonomous optimization loop", () => {
     expect(result.stopReason).toBe("Optimization budget reached");
     expect(result.plan.steps[0].status).toBe("skipped");
   });
+
+  it("rejects a candidate when its TrueForge iteration cost exceeds budget", async () => {
+    const result = await runOptimizationLoop(
+      plan,
+      [candidate("a"), candidate("b")],
+      async () => ({
+        passed: true,
+        detail: "passed",
+        trueForgeIterations: 2,
+      }),
+      {
+        maxAgentCost: 5,
+        maxTrueForgeIterations: 1,
+        maxParallelSubAgents: 4,
+        maxCandidates: 25,
+        maxRuntimeMs: 900000,
+        maxSandboxExecutions: 20,
+      },
+    );
+    expect(result.acceptedCandidateIds).toEqual([]);
+    expect(result.plan.steps[0].status).toBe("reverted");
+  });
 });

@@ -601,6 +601,17 @@ export function buildOptimizationPlan(
   const addError = (message: string) => {
     if (!validationErrors.includes(message)) validationErrors.push(message);
   };
+  const changedFiles = (diff: string): string[] =>
+    [...diff.matchAll(/^(?:\+\+\+|---) [ab]\/([^\n]+)$/gm)]
+      .map((match) => match[1])
+      .filter((file) => file !== "/dev/null");
+  for (const candidate of eligible) {
+    const files = new Set(changedFiles(candidate.diff));
+    if (files.size > policy.maxFilesPerPatch)
+      addError(
+        `Candidate ${candidate.id} changes ${files.size} files, exceeding maxFilesPerPatch ${policy.maxFilesPerPatch}`,
+      );
+  }
   let survivors = new Map(
     eligible.map((candidate) => [candidate.id, candidate]),
   );

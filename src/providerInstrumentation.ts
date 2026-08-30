@@ -1,5 +1,9 @@
 import type { AIInvocation, CaptureLevel, SourceLocation } from "./domain";
-import { estimateInvocationCost, instrumentInvocation } from "./v2";
+import {
+  estimateInvocationCost,
+  instrumentInvocation,
+  safeMetadata,
+} from "./v2";
 
 export type ProviderResponse = Record<string, unknown>;
 export type ProviderCallInput = {
@@ -23,7 +27,7 @@ export function normalizeProviderUsage(
   requestedModel?: string,
 ): Pick<
   AIInvocation,
-  "model" | "inputTokens" | "outputTokens" | "cost" | "metadata"
+  "model" | "inputTokens" | "outputTokens" | "cost" | "toolCalls" | "metadata"
 > {
   const input =
     numberAt(response, "usage", "prompt_tokens") ??
@@ -41,6 +45,18 @@ export function normalizeProviderUsage(
         : undefined;
   const model =
     typeof response.model === "string" ? response.model : requestedModel;
+  const toolCalls = Array.isArray(response.tool_calls)
+    ? response.tool_calls
+    : Array.isArray(response.toolCalls)
+      ? response.toolCalls
+      : Array.isArray(response.content)
+        ? response.content.filter(
+            (item) =>
+              item &&
+              typeof item === "object" &&
+              (item as Record<string, unknown>).type === "tool_use",
+          )
+        : undefined;
   const estimate = estimateInvocationCost({
     model,
     inputTokens: input,
@@ -51,6 +67,7 @@ export function normalizeProviderUsage(
     inputTokens: input,
     outputTokens: output,
     cost: Number.isFinite(estimate) ? estimate : undefined,
+    toolCalls,
     metadata: {
       provider,
       finishReason,
@@ -81,11 +98,18 @@ export async function instrumentProviderCall<T extends ProviderResponse>(
     result.value,
     input.model,
   );
+  const capturedToolCalls = safeMetadata(
+    { toolCalls: usage.toolCalls ?? [] },
+    input.captureLevel,
+  ).toolCalls;
   return {
     value: result.value,
     invocation: {
       ...result.invocation,
       ...usage,
+      toolCalls: Array.isArray(capturedToolCalls)
+        ? capturedToolCalls
+        : undefined,
       metadata: { ...result.invocation.metadata, ...usage.metadata },
     },
   };

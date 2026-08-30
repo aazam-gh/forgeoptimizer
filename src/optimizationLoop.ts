@@ -19,7 +19,13 @@ export type CandidateAttempt = {
 export type CandidateExecutor = (
   candidate: Candidate,
   step: OptimizationPlanStep,
-) => Promise<{ passed: boolean; detail: string }>;
+) => Promise<{
+  passed: boolean;
+  detail: string;
+  agentCost?: number;
+  trueForgeIterations?: number;
+  activeSubAgents?: number;
+}>;
 export type OptimizationLoopResult = {
   plan: OptimizationPlan;
   attempts: CandidateAttempt[];
@@ -76,13 +82,12 @@ export async function runOptimizationLoop(
       continue;
     }
     const elapsed = Date.now() - started;
-    if (
-      !canSpend(budget, ledger, {
-        candidates: 1,
-        sandboxExecutions: sandboxExecutionsPerCandidate,
-        runtimeMs: Math.max(0, elapsed - ledger.runtimeMs),
-      })
-    ) {
+    if (!canSpend(budget, ledger, {
+      candidates: 1,
+      sandboxExecutions: sandboxExecutionsPerCandidate,
+      trueForgeIterations: 1,
+      runtimeMs: Math.max(0, elapsed - ledger.runtimeMs),
+    })) {
       step.status = "skipped";
       stopReason = "Optimization budget reached";
       attempts.push({
@@ -103,9 +108,15 @@ export async function runOptimizationLoop(
         candidates: ledger.candidates + 1,
         sandboxExecutions:
           ledger.sandboxExecutions + sandboxExecutionsPerCandidate,
+        agentCost: ledger.agentCost + (result.agentCost ?? 0),
+        trueForgeIterations:
+          ledger.trueForgeIterations + (result.trueForgeIterations ?? 1),
+        activeSubAgents: result.activeSubAgents ?? 0,
         runtimeMs: Date.now() - started,
       };
-      const overRuntimeBudget = ledger.runtimeMs > budget.maxRuntimeMs;
+      const overRuntimeBudget =
+        ledger.runtimeMs > budget.maxRuntimeMs ||
+        budgetViolationsAfterExecution(budget, ledger).length > 0;
       const passed = result.passed && !overRuntimeBudget;
       if (result.passed) {
         step.status = passed ? "passed" : "reverted";
@@ -135,6 +146,7 @@ export async function runOptimizationLoop(
         candidates: ledger.candidates + 1,
         sandboxExecutions:
           ledger.sandboxExecutions + sandboxExecutionsPerCandidate,
+        trueForgeIterations: ledger.trueForgeIterations + 1,
         runtimeMs: Date.now() - started,
       };
       step.status = "reverted";
@@ -158,4 +170,18 @@ export async function runOptimizationLoop(
       .map((step) => step.candidateId),
     stopReason,
   };
+}
+
+function budgetViolationsAfterExecution(
+  budget: OptimizationBudget,
+  ledger: ReturnType<typeof emptyBudgetLedger>,
+): string[] {
+  const violations: string[] = [];
+  if (ledger.agentCost > budget.maxAgentCost)
+    violations.push("agent cost budget exceeded");
+  if (ledger.trueForgeIterations > budget.maxTrueForgeIterations)
+    violations.push("TrueForge iteration budget exceeded");
+  if (ledger.activeSubAgents > budget.maxParallelSubAgents)
+    violations.push("parallel sub-agent budget exceeded");
+  return violations;
 }

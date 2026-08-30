@@ -397,4 +397,18 @@ describe("V2 safety and evidence primitives", () => {
     ]);
     expect(plan.steps.some((step) => step.candidateId === "high")).toBe(false);
   });
+
+  it("rejects candidates that exceed the configured patch file limit", () => {
+    const result = analyzeFixture();
+    const multiFile = {
+      ...result.candidates[0],
+      diff: "--- a/src/a.ts\n+++ b/src/a.ts\n@@\n-old\n+new\n--- a/src/b.ts\n+++ b/src/b.ts\n@@\n-old\n+new",
+    };
+    const plan = buildOptimizationPlan("patch-limit", [multiFile], {
+      ...defaultOptimizationPolicy,
+      maxFilesPerPatch: 1,
+    });
+    expect(plan.valid).toBe(false);
+    expect(plan.validationErrors[0]).toContain("maxFilesPerPatch");
+  });
 });

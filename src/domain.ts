@@ -155,6 +155,7 @@ export interface AIInvocation {
   cacheHit?: boolean;
   retryCount?: number;
   error?: boolean;
+  toolCalls?: unknown[];
   contextTokens?: Record<string, number>;
   metadata: Record<string, unknown>;
 }

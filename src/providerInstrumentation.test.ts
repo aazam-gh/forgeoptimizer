@@ -8,4 +8,15 @@ describe('normalized provider instrumentation',()=>{
   it('keeps a response-supplied model when the request did not provide one',async()=>{const result=await instrumentOpenAI({...input,model:undefined},async()=>({model:'gpt-4.1',usage:{prompt_tokens:2,completion_tokens:1}}));expect(result.invocation.model).toBe('gpt-4.1');});
   it('keeps the provider operation independent of metadata capture',async()=>{const operation=vi.fn().mockResolvedValue({usage:{prompt_tokens:1,completion_tokens:1}});await instrumentOpenAI({...input,metadata:{authorization:'Bearer sk-test_123456789012'}},operation);expect(operation).toHaveBeenCalledOnce();});
   it('exposes framework adapters through the same normalized boundary',async()=>{const operations=[instrumentVercelAI,instrumentLangChainJS,instrumentLangChainPython,instrumentLlamaIndex];for(const instrument of operations){const result=await instrument(input,async()=>({usage:{inputTokens:3,outputTokens:2}}));expect(result.invocation.inputTokens).toBe(3);expect(result.invocation.metadata.provider).toBeDefined();}});
+  it('normalizes provider tool calls without persisting prompt content', async () => {
+    const result = await instrumentOpenAI({ ...input, captureLevel: 'redacted' }, async () => ({
+      model: 'gpt-4.1',
+      usage: { prompt_tokens: 3, completion_tokens: 2 },
+      tool_calls: [{ id: 'call-1', type: 'function', content: 'private' }],
+    }));
+    expect(result.invocation.toolCalls).toEqual([
+      { id: 'call-1', type: 'function', content: '[REDACTED]' },
+    ]);
+    expect(result.invocation.metadata).not.toHaveProperty('prompt');
+  });
 });

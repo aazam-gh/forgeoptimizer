@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { canTransition } from '../src/runState.ts';
-import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectRepository } from './github.ts';
+import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectCommit, inspectRepository, listRepositoryBranches } from './github.ts';
 import { assessValidationGate } from '../src/validation.ts';
 import { buildOptimizationReport } from '../src/report.ts';
 
@@ -178,6 +178,8 @@ async function handleRequest(request, response, next, database) {
   try {
     const segments = pathname.split('/').filter(Boolean);
     if (request.method === 'POST' && pathname === '/api/github/repository') { const body = await readBody(request); return json(response, 200, await inspectRepository(body.repositoryUrl, body.branch)); }
+    if (request.method === 'POST' && pathname === '/api/github/branches') { const body = await readBody(request); return json(response, 200, { branches: await listRepositoryBranches(body.repositoryUrl) }); }
+    if (request.method === 'POST' && pathname === '/api/github/commit') { const body = await readBody(request); return json(response, 200, await inspectCommit(body.repositoryUrl, body.commitSha)); }
     if (request.method === 'POST' && pathname === '/api/github/branch') { const body = await readBody(request); return json(response, 201, await createOptimizationBranch(body.repositoryUrl, body.baseBranch, body.branchName)); }
     if (request.method === 'POST' && pathname === '/api/github/pull-request') { const body = await readBody(request); if (body.approved !== true) return json(response, 409, { error: 'Explicit approval is required before creating a pull request' }); if (!body.validation) return json(response, 409, { error: 'Validation gate is not complete' }); const validation = assessValidationGate(body.validation); if (!validation.canPublish) return json(response, 409, { error: 'Validation gate is not complete', validation }); const reportBody = body.body ?? (body.report ? buildOptimizationReport({ ...body.report, validation }) : undefined); if (!reportBody) return json(response, 400, { error: 'Evidence-backed report body is required' }); return json(response, 201, await createPullRequest(body.repositoryUrl, body.head, body.base, body.title, reportBody)); }
     if (segments[1] === 'candidates') {

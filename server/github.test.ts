@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectRepository } from './github';
+import { commitOptimizationChanges, createOptimizationBranch, createPullRequest, inspectCommit, inspectRepository, listRepositoryBranches } from './github';
 
 describe('server-side GitHub workflow',()=>{
   afterEach(()=>{vi.unstubAllGlobals();delete process.env.GITHUB_TOKEN;});
@@ -39,5 +39,14 @@ describe('server-side GitHub workflow',()=>{
     await expect(commitOptimizationChanges('https://github.com/acme/app','forgeoptimizer/run-abcd',[{path:'src/app.ts',content:'export const ok = true;'}],'optimize: apply app patch')).resolves.toMatchObject({commitSha:'b'.repeat(40),changedFiles:['src/app.ts']});
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({message:'optimize: apply app patch',parents:['a'.repeat(40)]});
     await expect(commitOptimizationChanges('https://github.com/acme/app','forgeoptimizer/run-abcd',[{path:'../secrets.env',content:'no'}],'bad')).rejects.toThrow('Unsafe optimization file path');
+  });
+
+  it('lists branches and verifies an exact commit SHA server-side',async()=>{
+    process.env.GITHUB_TOKEN='server-secret';
+    const fetchMock=vi.fn().mockResolvedValueOnce(Response.json([{name:'main'},{name:'release'}])).mockResolvedValueOnce(Response.json({sha:'b'.repeat(40)}));
+    vi.stubGlobal('fetch',fetchMock);
+    await expect(listRepositoryBranches('https://github.com/acme/app')).resolves.toEqual(['main','release']);
+    await expect(inspectCommit('https://github.com/acme/app','b'.repeat(40))).resolves.toEqual({repository:'acme/app',commitSha:'b'.repeat(40)});
+    await expect(inspectCommit('https://github.com/acme/app','bad')).rejects.toThrow('Commit SHA');
   });
 });

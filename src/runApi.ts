@@ -6,6 +6,8 @@ async function request<T>(path:string,init?:RequestInit):Promise<T>{const respon
 export function createPersistedRun(input:Pick<Run,'repositoryUrl'|'sourceBranch'|'sourceCommitSha'|'scenarios'|'candidates'|'usages'|'before'|'approvalStatus'> & {policy?:unknown}):Promise<PersistedRun>{return request<PersistedRun>('/api/runs',{method:'POST',body:JSON.stringify(input)});}
 export type RepositoryInspection={owner:string;name:string;defaultBranch:string;private:boolean;baseCommitSha:string};
 export function inspectPersistedRepository(repositoryUrl:string,branch?:string):Promise<RepositoryInspection>{return request<RepositoryInspection>('/api/github/repository',{method:'POST',body:JSON.stringify({repositoryUrl,branch})});}
+export function listRepositoryBranches(repositoryUrl:string):Promise<{branches:string[]}>{return request<{branches:string[]}>('/api/github/branches',{method:'POST',body:JSON.stringify({repositoryUrl})});}
+export function inspectRepositoryCommit(repositoryUrl:string,commitSha:string):Promise<{repository:string;commitSha:string}>{return request<{repository:string;commitSha:string}>('/api/github/commit',{method:'POST',body:JSON.stringify({repositoryUrl,commitSha})});}
 export function listPersistedRuns():Promise<PersistedRun[]>{return request<PersistedRun[]>('/api/runs');}
 export function getPersistedRun(id:string):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}`);}
 export function submitPersistedPlan(id:string,plan:Run['plan']):Promise<PersistedRun>{return request<PersistedRun>(`/api/runs/${encodeURIComponent(id)}/plan`,{method:'POST',body:JSON.stringify(plan)});}

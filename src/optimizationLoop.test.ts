@@ -18,4 +18,10 @@ describe('bounded autonomous optimization loop',()=>{
     expect(result.stopReason).toBe('Optimization budget reached');
     expect(result.plan.steps[1].status).toBe('skipped');
   });
+
+  it('skips dependents when a prerequisite is reverted',async()=>{
+    const result=await runOptimizationLoop(plan,[candidate('a'),candidate('b')],async()=>({passed:false,detail:'regression'}));
+    expect(result.plan.steps.map(step=>step.status)).toEqual(['reverted','skipped']);
+    expect(result.attempts[1]).toMatchObject({candidateId:'b',status:'skipped'});
+  });
 });

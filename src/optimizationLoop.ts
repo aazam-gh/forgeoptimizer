@@ -16,6 +16,8 @@ export async function runOptimizationLoop(plan:OptimizationPlan,candidates:Candi
   for(const step of nextSteps){
     const candidate=byId.get(step.candidateId);
     if(!candidate){step.status='skipped';attempts.push({candidateId:step.candidateId,status:'skipped',detail:'Candidate is missing from the run snapshot',durationMs:0});continue;}
+    const blockedDependency=step.dependsOn.find(dependencyId=>nextSteps.find(dependency=>dependency.id===dependencyId)?.status!=='passed');
+    if(blockedDependency){step.status='skipped';const dependency=nextSteps.find(item=>item.id===blockedDependency);const detail=`Dependency ${dependency?.candidateId??blockedDependency} did not pass`;attempts.push({candidateId:candidate.id,status:'skipped',detail,durationMs:0});continue;}
     const elapsed=Date.now()-started;
     if(!canSpend(budget,ledger,{candidates:1,sandboxExecutions:1,runtimeMs:Math.max(0,elapsed)})){step.status='skipped';stopReason='Optimization budget reached';attempts.push({candidateId:candidate.id,status:'skipped',detail:stopReason,durationMs:0});break;}
     step.status='running';

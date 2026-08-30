@@ -140,6 +140,18 @@ export function submitPersistedBaseline(
     body: JSON.stringify(baseline),
   });
 }
+export function updatePersistedScenarios(
+  id: string,
+  scenarios: Run["scenarios"],
+): Promise<PersistedRun> {
+  return request<PersistedRun>(
+    `/api/runs/${encodeURIComponent(id)}/scenarios`,
+    {
+      method: "POST",
+      body: JSON.stringify({ scenarios: scenarios ?? [] }),
+    },
+  );
+}
 export function submitPersistedEvaluations(
   id: string,
   evaluations: Run["evaluations"],

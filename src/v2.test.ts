@@ -20,7 +20,14 @@ describe('V2 safety and evidence primitives', () => {
     });
 
     const localOnly = await instrumentInvocation({ provider: 'OpenAI', callSite: { file: 'src/a.ts', line: 4 }, captureLevel: 'full_local_only', metadata }, async () => 'ok');
-    expect(localOnly.invocation.metadata).toBe(metadata);
+    expect(localOnly.invocation.metadata).toEqual(metadata);
+    metadata.response.content = 'changed after capture';
+    expect(localOnly.invocation.metadata.response).toEqual({ content: 'private prompt', authorization: 'Bearer sk-test_123456789012' });
+
+    const circular: Record<string, unknown> = {};
+    circular.self = circular;
+    const circularInvocation = await instrumentInvocation({ provider: 'OpenAI', callSite: { file: 'src/a.ts', line: 4 }, captureLevel: 'redacted', metadata: circular }, async () => 'ok');
+    expect(circularInvocation.invocation.metadata).toEqual({ self: '[Circular]' });
   });
 
   it('evaluates deterministic behavior and preserves baseline commit identity', () => {
